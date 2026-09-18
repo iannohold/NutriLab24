@@ -35,7 +35,6 @@ def get_conn():
         max_overflow=10,
         pool_pre_ping=True
     )
-    )
 
 @st.cache_data(ttl=60)  
 def get_user_macros_db(user_id):
