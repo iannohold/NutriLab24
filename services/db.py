@@ -28,10 +28,13 @@ FALLBACK_DB = {
 
 def get_conn():
     # Ottimizzazione del pool per Supabase
-    return st.connection(
-        "supabase", 
-        type="sql", 
-        kwargs={"pool_size": 5, "max_overflow": 10, "pool_pre_ping": True}
+   return st.connection(
+        "supabase",
+        type="sql",
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True
+    )
     )
 
 @st.cache_data(ttl=60)  
