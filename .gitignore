@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# File Sistema Mac
+.DS_Store
+Documentazione/
+Avvia_Nutrilab24.command
