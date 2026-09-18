@@ -93,7 +93,7 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                 for idx, row in df_r.iterrows():
                     c1_r, c2_r = st.columns([2, 1]) if row['Unita'] == 'pz' else st.columns([1, 0.01])
                     with c1_r:
-                        mod_qty_raw[idx] = st.number_input(f"{row['Nome']} ({row['Unita']}) a crudo", min_value=0.0, value=float(row['Quantita']), step=1.0 if row['Unita'] == 'pz' else 5.0, key=f"mod_raw_{idx}_{data_selezionata}")
+                        mod_qty_raw[idx] = st.number_input(f"{row['Nome']} ({row['Unita']})", min_value=0.0, value=float(row['Quantita']), step=1.0 if row['Unita'] == 'pz' else 5.0, key=f"mod_raw_{idx}_{data_selezionata}")
                     if row['Unita'] == 'pz':
                         with c2_r: mod_peso_pz[idx] = st.number_input(f"Peso 1 pz (g)", min_value=0.1, value=float(row.get('Peso_pz', 100.0)), step=1.0, key=f"mod_pz_{idx}_{data_selezionata}")
                     else: mod_peso_pz[idx] = 0.0
@@ -136,7 +136,7 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
             if porz_orig <= 0: porz_orig = 1.0
             peso_singola_porzione = peso_finale_ricetta / porz_orig
             
-            st.info(f"⚖️ **Report Preparazione:** Peso a crudo: **{peso_crudo_totale:.1f} g** | Peso Cotto/Finito: **{peso_finale_ricetta:.1f} g**")
+            st.info(f"⚖️ **Report Preparazione:** Peso: **{peso_crudo_totale:.1f} g** | Peso Cotto/Finito: **{peso_finale_ricetta:.1f} g**")
             
             st.markdown("### 2️⃣ Quanto ne hai mangiato?")
             c_mod1, c_mod2 = st.columns(2)
@@ -182,7 +182,7 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
 
         c_ing, c_qta, c_unit, c_pz, c_btn = st.columns([3, 1, 1, 1, 1.5])
         ing_scelto = c_ing.selectbox("Cerca alimento:", ["-- Seleziona --"] + sorted(list(MACROS_DB.keys())), key=f"vassoio_ing_{data_selezionata}", on_change=update_vassoio_from_selection)
-        qta_val = c_qta.number_input("Quantità a crudo", min_value=0.0, step=10.0, key=f"vassoio_qta_{data_selezionata}", value=None)
+        qta_val = c_qta.number_input("Quantità", min_value=0.0, step=10.0, key=f"vassoio_qta_{data_selezionata}", value=None)
         
         idx_u = ["g", "ml", "pz"].index(st.session_state.get(f"vassoio_u_{data_selezionata}_sel", "g")) if st.session_state.get(f"vassoio_u_{data_selezionata}_sel") in ["g", "ml", "pz"] else 0
         unit_val = c_unit.selectbox("Unità", options=["g", "ml", "pz"], index=idx_u, key=f"vassoio_u_{data_selezionata}_sel")
