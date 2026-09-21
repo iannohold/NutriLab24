@@ -81,6 +81,8 @@ def get_status_emoji(val, tgt):
 # ==========================================
 df_diario = get_diario_utente(USER_ID)
 if not df_diario.empty and 'Data' in df_diario.columns:
+    # Blindatura: forza le date a stringa pura YYYY-MM-DD per evitare disallineamenti
+    df_diario['Data'] = pd.to_datetime(df_diario['Data'], errors='coerce').dt.strftime('%Y-%m-%d')
     df_diario['Data_DT'] = pd.to_datetime(df_diario['Data'], format='%Y-%m-%d', errors='coerce').dt.date
 else:
     df_diario['Data_DT'] = pd.Series(dtype='object')
@@ -147,7 +149,6 @@ with tab_inserisci:
                 has_pianificati = any(str(row.get('Stato', 'Consumato')) == 'Pianificato' for _, row in df_pasto.iterrows())
                 alert_icon = "⏳ " if has_pianificati else ""
                 
-                # INTESTAZIONE CON TUTTI I MACROS E SALE
                 with st.expander(f"{alert_icon}🍽️ {pasto.upper()} (Cal: {t_cal_p:.0f} kcal | C: {t_c_p:.1f}g | P: {t_p_p:.1f}g | G: {t_f_p:.1f}g | Sale: {t_sale_p:.2f}g)", expanded=has_pianificati):
                     for _, row in df_pasto.iterrows():
                         c_txt, c_mod, c_del = st.columns([0.70, 0.15, 0.15])
@@ -180,7 +181,6 @@ with tab_inserisci:
                             elimina_voce_diario(row['ID'])
                             st.rerun()
 
-                        # EDIT FORM
                         if st.session_state.get(f"editing_{row['ID']}", False):
                             with st.form(key=f"form_edit_{row['ID']}"):
                                 st.write(f"Modifica la quantità per: **{row['Elemento']}**")

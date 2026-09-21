@@ -200,7 +200,12 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                 unita_def = res[11]
                 peso_pz = res[10]
                 st.session_state[f"vassoio_u_{data_selezionata}_sel"] = unita_def
-                st.session_state[f"vassoio_pz_{data_selezionata}"] = peso_pz if peso_pz > 0 else 0.0
+                
+                try:
+                    peso_val = float(peso_pz)
+                except (ValueError, TypeError):
+                    peso_val = 0.0
+                st.session_state[f"vassoio_pz_{data_selezionata}"] = peso_val if peso_val > 0 else 0.0
 
         c_ing, c_qta, c_unit, c_pz, c_btn = st.columns([3, 1, 1, 1, 1.5])
         ing_scelto = c_ing.selectbox("Cerca alimento:", opzioni_vassoio, key=f"vassoio_ing_{data_selezionata}", on_change=update_vassoio_from_selection)
