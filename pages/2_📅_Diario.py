@@ -10,6 +10,8 @@ from services.db import (
     get_profilo_utente, ADMIN_ID
 )
 
+st.set_page_config(page_title="NutriLab24", layout="wide")
+
 # ==========================================
 # 🔐 CONTROLLO SICUREZZA E NAVIGAZIONE
 # ==========================================
@@ -110,23 +112,27 @@ with tab_inserisci:
         
         t_cal = df_consumati['Calorie'].sum(); t_c = df_consumati['Carboidrati'].sum()
         t_p = df_consumati['Proteine'].sum(); t_f = df_consumati['Grassi'].sum()
+        t_sale = df_consumati['Sale'].sum() if 'Sale' in df_consumati.columns else 0.0
 
         p_cal = df_pianificati['Calorie'].sum(); p_c = df_pianificati['Carboidrati'].sum()
         p_p = df_pianificati['Proteine'].sum(); p_f = df_pianificati['Grassi'].sum()
+        p_sale = df_pianificati['Sale'].sum() if 'Sale' in df_pianificati.columns else 0.0
 
         if tgt_cal > 0:
-            cp1, cp2, cp3, cp4 = st.columns(4)
+            cp1, cp2, cp3, cp4, cp5 = st.columns(5)
             render_stacked_prog(cp1, "🔥 Cal", t_cal, p_cal, tgt_cal, "kcal")
             render_stacked_prog(cp2, "🍞 Carb", t_c, p_c, tgt_c, "g")
             render_stacked_prog(cp3, "🥩 Prot", t_p, p_p, tgt_p, "g")
             render_stacked_prog(cp4, "🥑 Gras", t_f, p_f, tgt_f, "g")
+            cp5.metric("🧂 Sale", f"{t_sale:.2f} ({t_sale+p_sale:.2f}) g")
             st.write("")
         else:
-            cm1, cm2, cm3, cm4 = st.columns(4)
+            cm1, cm2, cm3, cm4, cm5 = st.columns(5)
             cm1.metric("🔥 Cal", f"{t_cal:.0f} ({t_cal+p_cal:.0f}) kcal")
             cm2.metric("🍞 Carb", f"{t_c:.1f} ({t_c+p_c:.1f}) g")
             cm3.metric("🥩 Prot", f"{t_p:.1f} ({t_p+p_p:.1f}) g")
             cm4.metric("🥑 Gras", f"{t_f:.1f} ({t_f+p_f:.1f}) g")
+            cm5.metric("🧂 Sale", f"{t_sale:.2f} ({t_sale+p_sale:.2f}) g")
         
         st.write("")
         for pasto in ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]:
@@ -136,18 +142,19 @@ with tab_inserisci:
                 t_c_p = df_pasto['Carboidrati'].sum()
                 t_p_p = df_pasto['Proteine'].sum()
                 t_f_p = df_pasto['Grassi'].sum()
+                t_sale_p = df_pasto['Sale'].sum() if 'Sale' in df_pasto.columns else 0.0
                 
                 has_pianificati = any(str(row.get('Stato', 'Consumato')) == 'Pianificato' for _, row in df_pasto.iterrows())
                 alert_icon = "⏳ " if has_pianificati else ""
                 
-                # INTESTAZIONE CON TUTTI I MACROS
-                with st.expander(f"{alert_icon}🍽️ {pasto.upper()} (Cal: {t_cal_p:.0f} kcal | C: {t_c_p:.1f}g | P: {t_p_p:.1f}g | G: {t_f_p:.1f}g)", expanded=has_pianificati):
+                # INTESTAZIONE CON TUTTI I MACROS E SALE
+                with st.expander(f"{alert_icon}🍽️ {pasto.upper()} (Cal: {t_cal_p:.0f} kcal | C: {t_c_p:.1f}g | P: {t_p_p:.1f}g | G: {t_f_p:.1f}g | Sale: {t_sale_p:.2f}g)", expanded=has_pianificati):
                     for _, row in df_pasto.iterrows():
                         c_txt, c_mod, c_del = st.columns([0.70, 0.15, 0.15])
                         is_pianificato = str(row.get('Stato', 'Consumato')) == 'Pianificato'
                         
                         if is_pianificato:
-                            c_txt.markdown(f"<span style='color: gray;'>⏳ <b>[DA CONFERMARE]</b> {row['Quantita']:.1f} {row['Unita']} di {row['Elemento']} <i>(Cal: {row['Calorie']:.0f} | P: {row['Proteine']:.1f}g)</i></span>", unsafe_allow_html=True)
+                            c_txt.markdown(f"<span style='color: gray;'>⏳ <b>[DA CONFERMARE]</b> {row['Quantita']:.1f} {row['Unita']} di {row['Elemento']} <i>(Peso: {row['Quantita']:.1f}{row['Unita']} | Cal: {row['Calorie']:.0f} | P: {row['Proteine']:.1f}g)</i></span>", unsafe_allow_html=True)
                             with st.container():
                                 cc_spazio, cc_qta, cc_btn = st.columns([0.05, 0.45, 0.50])
                                 nuova_qta = cc_qta.number_input(f"Q.tà finale ({row['Unita']})", value=float(row['Quantita']), step=1.0, key=f"qta_conf_{row['ID']}")
@@ -159,11 +166,12 @@ with tab_inserisci:
                                         new_c = float(row['Carboidrati']) * ratio
                                         new_p = float(row['Proteine']) * ratio
                                         new_f = float(row['Grassi']) * ratio
+                                        new_sal = float(row.get('Sale', 0.0)) * ratio
                                         
-                                        aggiorna_voce_diario(row['ID'], nuova_qta, new_cal, new_c, new_p, new_f, 'Consumato')
+                                        aggiorna_voce_diario(row['ID'], nuova_qta, new_cal, new_c, new_p, new_f, new_sal, 'Consumato')
                                         st.rerun()
                         else:
-                            c_txt.write(f"- **{row['Quantita']:.1f} {row['Unita']}** di {row['Elemento']} *(Cal: {row['Calorie']:.0f} | C: {row['Carboidrati']:.1f} | P: {row['Proteine']:.1f} | G: {row['Grassi']:.1f})*")
+                            c_txt.write(f"- **{row['Quantita']:.1f} {row['Unita']}** di {row['Elemento']} *(Peso: {row['Quantita']:.1f}{row['Unita']} | Cal: {row['Calorie']:.0f} | C: {row['Carboidrati']:.1f} | P: {row['Proteine']:.1f} | G: {row['Grassi']:.1f} | Sale: {row.get('Sale', 0.0):.2f}g)*")
 
                         if c_mod.button("✏️ Modifica", key=f"mod_{row['ID']}"):
                             st.session_state[f"editing_{row['ID']}"] = True
@@ -172,7 +180,7 @@ with tab_inserisci:
                             elimina_voce_diario(row['ID'])
                             st.rerun()
 
-                        # EDIT FORM: ORA CHIEDE SOLO LA QUANTITÁ E SCALA TUTTO DA SOLO
+                        # EDIT FORM
                         if st.session_state.get(f"editing_{row['ID']}", False):
                             with st.form(key=f"form_edit_{row['ID']}"):
                                 st.write(f"Modifica la quantità per: **{row['Elemento']}**")
@@ -186,6 +194,7 @@ with tab_inserisci:
                                     new_c = float(row['Carboidrati']) * ratio
                                     new_p = float(row['Proteine']) * ratio
                                     new_f = float(row['Grassi']) * ratio
+                                    new_sal = float(row.get('Sale', 0.0)) * ratio
                                     
                                     aggiorna_voce_diario(
                                         id_voce=row['ID'], 
@@ -193,7 +202,8 @@ with tab_inserisci:
                                         cal=new_cal, 
                                         c=new_c, 
                                         p=new_p, 
-                                        f=new_f, 
+                                        f=new_f,
+                                        sal=new_sal, 
                                         stato=row['Stato'], 
                                         elemento=row['Elemento']
                                     )
@@ -211,7 +221,7 @@ with tab_storico:
             with st.expander(f"📅 {d} - {df_g['Calorie'].sum():.0f} kcal"):
                 for _, row in df_g.iterrows():
                     col1, col2 = st.columns([0.85, 0.15])
-                    col1.write(f"- **{row['Quantita']:.1f} {row['Unita']}** di {row['Elemento']} ({row['Calorie']:.0f} kcal)")
+                    col1.write(f"- **{row['Quantita']:.1f} {row['Unita']}** di {row['Elemento']} *(Peso: {row['Quantita']:.1f}{row['Unita']} | Cal: {row['Calorie']:.0f} kcal)*")
                     if col2.button("✏️ Mod", key=f"mod_stor_{row['ID']}"):
                         st.session_state[f"editing_{row['ID']}"] = True
                     
@@ -230,6 +240,7 @@ with tab_storico:
                                     c=float(row['Carboidrati']) * ratio,
                                     p=float(row['Proteine']) * ratio,
                                     f=float(row['Grassi']) * ratio,
+                                    sal=float(row.get('Sale', 0.0)) * ratio,
                                     stato=str(row.get('Stato', 'Consumato')),
                                     elemento=row['Elemento']
                                 )
@@ -277,26 +288,30 @@ with tab_report:
             m_c_c = df_rep_cons['Carboidrati'].sum() / giorni_totali if giorni_totali > 0 else 0
             m_p_c = df_rep_cons['Proteine'].sum() / giorni_totali if giorni_totali > 0 else 0
             m_f_c = df_rep_cons['Grassi'].sum() / giorni_totali if giorni_totali > 0 else 0
+            m_sale_c = df_rep_cons['Sale'].sum() / giorni_totali if ('Sale' in df_rep_cons.columns and giorni_totali > 0) else 0
             
             m_cal_p = df_rep_pian['Calorie'].sum() / giorni_totali if giorni_totali > 0 else 0
             m_c_p = df_rep_pian['Carboidrati'].sum() / giorni_totali if giorni_totali > 0 else 0
             m_p_p = df_rep_pian['Proteine'].sum() / giorni_totali if giorni_totali > 0 else 0
             m_f_p = df_rep_pian['Grassi'].sum() / giorni_totali if giorni_totali > 0 else 0
+            m_sale_p = df_rep_pian['Sale'].sum() / giorni_totali if ('Sale' in df_rep_pian.columns and giorni_totali > 0) else 0
             
             if tgt_cal > 0:
                 st.markdown("##### 🎯 Media Giornaliera rispetto ai tuoi Obiettivi:")
-                c_r1, c_r2, c_r3, c_r4 = st.columns(4)
+                c_r1, c_r2, c_r3, c_r4, c_r5 = st.columns(5)
                 render_stacked_prog(c_r1, "🔥 Cal Medie", m_cal_c, m_cal_p, tgt_cal, "kcal")
                 render_stacked_prog(c_r2, "🍞 Carb Medi", m_c_c, m_c_p, tgt_c, "g")
                 render_stacked_prog(c_r3, "🥩 Prot Medie", m_p_c, m_p_p, tgt_p, "g")
                 render_stacked_prog(c_r4, "🥑 Gras Medi", m_f_c, m_f_p, tgt_f, "g")
+                c_r5.metric("🧂 Sale Medio", f"{m_sale_c:.2f} g")
                 st.write("")
             else:
-                c_r1, c_r2, c_r3, c_r4 = st.columns(4)
+                c_r1, c_r2, c_r3, c_r4, c_r5 = st.columns(5)
                 c_r1.metric("🔥 Calorie Medie", f"{m_cal_c:.0f} kcal", f"Pianificate: +{m_cal_p:.0f}")
                 c_r2.metric("🍞 Carboidrati Medi", f"{m_c_c:.1f} g", f"Pianificati: +{m_c_p:.1f}")
                 c_r3.metric("🥩 Proteine Medie", f"{m_p_c:.1f} g", f"Pianificate: +{m_p_p:.1f}")
                 c_r4.metric("🥑 Grassi Medi", f"{m_f_c:.1f} g", f"Pianificati: +{m_f_p:.1f}")
+                c_r5.metric("🧂 Sale", f"{m_sale_c:.2f} g")
             
             st.write("")
             c_chart1, c_chart2 = st.columns([1, 1.8])
@@ -323,8 +338,13 @@ with tab_report:
                 st.plotly_chart(fig_line, use_container_width=True)
                 
             with st.expander("📅 Vedi Tabella Sintetica Giornaliera"):
-                df_day = df_rep.groupby(['Data', 'Stato'])[['Calorie', 'Carboidrati', 'Proteine', 'Grassi']].sum().reset_index()
+                cols_to_group = ['Calorie', 'Carboidrati', 'Proteine', 'Grassi']
+                if 'Sale' in df_rep.columns: cols_to_group.append('Sale')
+                df_day = df_rep.groupby(['Data', 'Stato'])[cols_to_group].sum().reset_index()
                 df_day = df_day.sort_values(['Data', 'Stato'], ascending=[False, True])
-                st.dataframe(df_day.style.format({"Calorie": "{:.0f}", "Carboidrati": "{:.1f}", "Proteine": "{:.1f}", "Grassi": "{:.1f}"}), use_container_width=True, hide_index=True)
+                
+                format_dict = {"Calorie": "{:.0f}", "Carboidrati": "{:.1f}", "Proteine": "{:.1f}", "Grassi": "{:.1f}"}
+                if 'Sale' in df_day.columns: format_dict["Sale"] = "{:.2f}"
+                st.dataframe(df_day.style.format(format_dict), use_container_width=True, hide_index=True)
         else: st.warning("Nessun dato per i pasti selezionati in questo periodo.")
     else: st.info("Nessun dato registrato nell'intervallo selezionato.")

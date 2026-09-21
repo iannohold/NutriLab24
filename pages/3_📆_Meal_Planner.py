@@ -10,7 +10,9 @@ from services.db import (
     get_dispensa_utente, get_profilo_utente
 )
 
-# # 1. Controllo di sicurezza centralizzato
+st.set_page_config(page_title="NutriLab24", layout="wide")
+
+# 1. Controllo di sicurezza centralizzato
 from components.auth import require_login
 require_login()
 
@@ -45,7 +47,7 @@ df_diario = get_diario_utente(USER_ID)
 if not df_diario.empty and 'Data' in df_diario.columns:
     df_diario['Data_DT'] = pd.to_datetime(df_diario['Data'], format='%Y-%m-%d', errors='coerce').dt.date
 else:
-    df_diario = pd.DataFrame(columns=["ID", "Data", "Pasto", "Elemento", "Quantita", "Unita", "Calorie", "Carboidrati", "Proteine", "Grassi", "Saturi", "Fibre", "User_ID", "TGT_Cal", "TGT_C", "TGT_P", "TGT_F", "Stato", "Data_DT"])
+    df_diario = pd.DataFrame(columns=["ID", "Data", "Pasto", "Elemento", "Quantita", "Unita", "Calorie", "Carboidrati", "Proteine", "Grassi", "Saturi", "Fibre", "Sale", "User_ID", "TGT_Cal", "TGT_C", "TGT_P", "TGT_F", "Stato", "Data_DT"])
 
 # Recupero profilo tramite SQL
 tgt_cal = tgt_c = tgt_p = tgt_f = 0.0
@@ -75,10 +77,12 @@ with tab_nuovo:
         for d in giorni_futuri:
             df_giorno = df_futuro[df_futuro['Data'] == d]
             t_cal_storico = df_giorno['Calorie'].sum()
+            sale_giorno = df_giorno['Sale'].sum() if 'Sale' in df_giorno.columns else 0.0
+            
             d_obj = pd.to_datetime(d)
             nome_giorno = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"][d_obj.weekday()]
             
-            with st.expander(f"📌 {nome_giorno} {d_obj.strftime('%d/%m/%Y')} - Pianificato: {t_cal_storico:.0f} kcal", expanded=False):
+            with st.expander(f"📌 {nome_giorno} {d_obj.strftime('%d/%m/%Y')} - Pianificato: {t_cal_storico:.0f} kcal (Sale: {sale_giorno:.2f}g)", expanded=False):
                 if tgt_cal > 0:
                     cp1, cp2, cp3, cp4 = st.columns(4)
                     render_prog(cp1, "🔥 Cal", t_cal_storico, tgt_cal, "kcal")
@@ -92,9 +96,10 @@ with tab_nuovo:
                 for pasto in ["Colazione", "Spuntino", "Pranzo", "Merenda", "Cena"]:
                     df_pasto_s = df_giorno[df_giorno['Pasto'] == pasto]
                     if not df_pasto_s.empty:
-                        st.markdown(f"**🍽️ {pasto.upper()}** (Tot: {df_pasto_s['Calorie'].sum():.0f} kcal)")
+                        sale_pasto = df_pasto_s['Sale'].sum() if 'Sale' in df_pasto_s.columns else 0.0
+                        st.markdown(f"**🍽️ {pasto.upper()}** (Tot: {df_pasto_s['Calorie'].sum():.0f} kcal | Sale: {sale_pasto:.2f}g)")
                         for _, row in df_pasto_s.iterrows():
-                            st.write(f"- **{row['Quantita']:.1f} {row['Unita']}** di {row['Elemento']} *(Cal: {row['Calorie']:.0f} | C: {row['Carboidrati']:.1f} | P: {row['Proteine']:.1f} | G: {row['Grassi']:.1f})*")
+                            st.write(f"- **{row['Quantita']:.1f} {row['Unita']}** di {row['Elemento']} *(Peso: {row['Quantita']:.1f}{row['Unita']} | Cal: {row['Calorie']:.0f} | C: {row['Carboidrati']:.1f} | P: {row['Proteine']:.1f} | G: {row['Grassi']:.1f} | Sale: {row.get('Sale', 0.0):.2f}g)*")
                 st.write("")
                 
                 col_go, col_del_day = st.columns([1, 1])
@@ -140,6 +145,7 @@ with tab_clona:
                                 "grassi": float(row['Grassi']),
                                 "saturi": float(row.get('Saturi', 0) or 0),
                                 "fibre": float(row.get('Fibre', 0) or 0),
+                                "sale": float(row.get('Sale', 0.0) or 0.0),
                                 "user_id": USER_ID,
                                 "tgt_cal": tgt_cal,
                                 "tgt_c": tgt_c,

@@ -1,104 +1,300 @@
 import streamlit as st
 import pandas as pd
-from services.db import get_profilo_utente, salva_profilo_utente
+import plotly.express as px
 from components.nav import render_top_nav
+from services.db import get_profilo_utente, salva_profilo_utente, get_storico_profilo
 
-# # 1. Controllo di sicurezza centralizzato
+# 1. Controllo di sicurezza centralizzato
 from components.auth import require_login
 require_login()
 
-# 🧭 VISUALIZZA LA NAVIGAZIONE SUPERIORE
-render_top_nav("Profilo")
+st.set_page_config(page_title="NutriLab24 - Profilo", layout="wide")
+render_top_nav("Profilo e Obiettivi")
 
 USER_ID = st.session_state.username
 
-st.title("👤 Profilo e Obiettivi Nutrizionali")
-st.markdown("#### *Calcola il tuo fabbisogno e genera i tuoi target in automatico.* 🎯")
+st.title("👤 Profilo, Misure e Obiettivi")
+st.markdown("#### *Calcola il tuo fabbisogno, gestisci i target con logica avanzata e monitora i progressi.* 📈")
 st.write("")
 
-# Lettura profilo tramite SQL
+# Recupero profilo attuale dal DB
 df_prof = get_profilo_utente(USER_ID)
+curr_peso = 70.0; curr_alt = 170; curr_eta = 30; curr_sesso = "Uomo"; curr_att = "Sedentario"
+curr_ob = "Mantenimento"
+curr_cal = 2000.0; curr_c = 200.0; curr_p = 150.0; curr_f = 60.0
+curr_collo = curr_petto = curr_vita = curr_fianchi = curr_braccio = curr_coscia = curr_polpaccio = 0.0
+curr_mgrassa = curr_mmusc = curr_mossea = curr_acqua = 0.0
 
-def_peso = float(df_prof.iloc[0]['Peso']) if not df_prof.empty and pd.notna(df_prof.iloc[0]['Peso']) else 75.0
-def_alt = int(df_prof.iloc[0]['Altezza']) if not df_prof.empty and pd.notna(df_prof.iloc[0]['Altezza']) else 175
-def_eta = int(df_prof.iloc[0]['Eta']) if not df_prof.empty and pd.notna(df_prof.iloc[0]['Eta']) else 52
-def_sesso = str(df_prof.iloc[0]['Sesso']) if not df_prof.empty and pd.notna(df_prof.iloc[0]['Sesso']) else "Uomo"
-def_att = str(df_prof.iloc[0]['Attivita']) if not df_prof.empty and pd.notna(df_prof.iloc[0]['Attivita']) else "Moderatamente Attivo (1.55) - Sport moderato 3-5 volte a sett"
-
-st.markdown("### 1️⃣ I tuoi Dati Personali")
-c1, c2, c3, c4 = st.columns(4)
-peso = c1.number_input("Peso attuale (kg)", min_value=30.0, max_value=200.0, value=def_peso, step=0.1)
-alt = c2.number_input("Altezza (cm)", min_value=100, max_value=250, value=def_alt, step=1)
-eta = c3.number_input("Età", min_value=10, max_value=100, value=def_eta, step=1)
-sesso = c4.selectbox("Sesso", ["Uomo", "Donna"], index=0 if def_sesso=="Uomo" else 1)
-
-attivita_list = {
-    "Sedentario (1.2) - Lavoro da scrivania, no sport": 1.2,
-    "Leggermente Attivo (1.375) - Sport leggero 1-3 volte a sett": 1.375,
-    "Moderatamente Attivo (1.55) - Sport moderato 3-5 volte a sett": 1.55,
-    "Molto Attivo (1.725) - Sport intenso 6-7 giorni": 1.725,
-    "Extra Attivo (1.9) - Atleta agonista o lavoro fisico pesante": 1.9
-}
-idx_att = list(attivita_list.keys()).index(def_att) if def_att in attivita_list else 2
-att = st.selectbox("Livello di Attività Media", list(attivita_list.keys()), index=idx_att)
-
-s = 5 if sesso == "Uomo" else -161
-bmr = (10 * peso) + (6.25 * alt) - (5 * eta) + s
-tdee = bmr * attivita_list[att]
-
-st.info(f"🧬 **Metabolismo Basale (BMR):** {bmr:.0f} kcal  |  🔥 **Dispendio Energetico Totale (TDEE):** {tdee:.0f} kcal")
-
-st.divider()
-
-st.markdown("### 2️⃣ Generazione Automatica dei Macros")
-st.write("Scegli il tuo obiettivo e imposta i fattori nutrizionali. I Carboidrati verranno calcolati automaticamente per coprire le calorie rimanenti.")
-
-col_ob1, col_ob2, col_ob3 = st.columns(3)
-
-obiettivo = col_ob1.selectbox(
-    "Qual è il tuo obiettivo?", 
-    ["Mantenimento (TDEE esatto)", "Dimagrimento Lieve (-300 kcal)", "Dimagrimento Marcato (-500 kcal)", "Costruzione Muscolare (+300 kcal)"]
-)
-
-if "Mantenimento" in obiettivo: tgt_cal_auto = tdee
-elif "Lieve" in obiettivo: tgt_cal_auto = tdee - 300
-elif "Marcato" in obiettivo: tgt_cal_auto = tdee - 500
-else: tgt_cal_auto = tdee + 300
-
-molt_p = col_ob2.slider("Fattore Proteine (g per kg di peso)", min_value=1.0, max_value=3.0, value=2.0, step=0.1, help="Per sportivi che si allenano coi pesi si consiglia 1.6 - 2.2 g/kg.")
-molt_f = col_ob3.slider("Fattore Grassi (g per kg di peso)", min_value=0.5, max_value=1.5, value=0.8, step=0.1, help="Per salute ormonale media consigliata 0.8 - 1.0 g/kg.")
-
-calc_p = peso * molt_p
-calc_f = peso * molt_f
-cal_occupate = (calc_p * 4) + (calc_f * 9)
-calc_c = (tgt_cal_auto - cal_occupate) / 4 if tgt_cal_auto > cal_occupate else 0.0
-
-perc_p = ((calc_p * 4) / tgt_cal_auto) * 100 if tgt_cal_auto > 0 else 0
-perc_f = ((calc_f * 9) / tgt_cal_auto) * 100 if tgt_cal_auto > 0 else 0
-perc_c = ((calc_c * 4) / tgt_cal_auto) * 100 if tgt_cal_auto > 0 else 0
-
-st.markdown("#### 📊 Ripartizione Macros")
-st.success(f"🍞 **Carboidrati:** {perc_c:.0f}%  |  🥩 **Proteine:** {perc_p:.0f}%  |  🥑 **Grassi:** {perc_f:.0f}%")
-
-st.markdown("#### 🎯 I tuoi Target Finali da Salvare")
-st.write("Questi sono i valori generati. Se vuoi, puoi arrotondarli o ritoccarli a mano prima di salvare.")
-
-tc1, tc2, tc3, tc4 = st.columns(4)
-t_cal = tc1.number_input("Target Calorie", value=float(tgt_cal_auto), step=50.0)
-t_c = tc2.number_input("Target Carboidrati (g)", value=float(calc_c), step=5.0)
-t_p = tc3.number_input("Target Proteine (g)", value=float(calc_p), step=5.0)
-t_f = tc4.number_input("Target Grassi (g)", value=float(calc_f), step=5.0)
-
-cal_check = (t_c * 4) + (t_p * 4) + (t_f * 9)
-if abs(cal_check - t_cal) > 50:
-    st.warning(f"⚠️ Nota: I macro generano circa {cal_check:.0f} kcal, ma il target in alto è {t_cal:.0f}. Non combaciano perfettamente.")
+if not df_prof.empty:
+    r = df_prof.iloc[0]
+    curr_peso = float(r.get('peso', 70.0))
+    curr_alt = int(r.get('altezza', 170))
+    curr_eta = int(r.get('eta', 30))
+    curr_sesso = str(r.get('sesso', 'Uomo'))
+    curr_att = str(r.get('attivita', 'Sedentario'))
+    curr_ob = str(r.get('obiettivo', 'Mantenimento'))
     
-st.write("")
-if st.button("💾 Conferma e Salva Obiettivi", type="primary", use_container_width=True):
-    with st.spinner("Salvataggio in Cloud..."):
-        # Scrittura profilo tramite SQL
-        success = salva_profilo_utente(USER_ID, peso, alt, eta, sesso, att, t_cal, t_c, t_p, t_f)
-        if success:
-            st.success("✅ Profilo e Obiettivi aggiornati! Vai nel Diario Alimentare per vedere le Barre di Progresso colorate in azione.")
+    curr_cal = float(r.get('tgt_cal', 2000.0))
+    curr_c = float(r.get('tgt_c', 200.0))
+    curr_p = float(r.get('tgt_p', 150.0))
+    curr_f = float(r.get('tgt_f', 60.0))
+    
+    curr_collo = float(r.get('circ_collo', 0.0))
+    curr_petto = float(r.get('circ_petto', 0.0))
+    curr_vita = float(r.get('circ_vita', 0.0))
+    curr_fianchi = float(r.get('circ_fianchi', 0.0))
+    curr_braccio = float(r.get('circ_braccio', 0.0))
+    curr_coscia = float(r.get('circ_coscia', 0.0))
+    curr_polpaccio = float(r.get('circ_polpaccio', 0.0))
+    
+    curr_mgrassa = float(r.get('massa_grassa', 0.0))
+    curr_mmusc = float(r.get('massa_muscolare', 0.0))
+    curr_mossea = float(r.get('massa_ossea', 0.0))
+    curr_acqua = float(r.get('acqua_corporea', 0.0))
+
+# Inizializzazione Session State per i target
+if "t_cal" not in st.session_state: st.session_state.t_cal = curr_cal
+if "t_c" not in st.session_state: st.session_state.t_c = curr_c
+if "t_p" not in st.session_state: st.session_state.t_p = curr_p
+if "t_f" not in st.session_state: st.session_state.t_f = curr_f
+
+tab_dati, tab_storico = st.tabs(["📝 Dati e Calcolatore Macros", "📊 Andamento e Storico"])
+
+with tab_dati:
+    # ---------------------------------------------------------------------------------
+    # SEZIONE 1: Dati Fissi
+    # ---------------------------------------------------------------------------------
+    st.markdown("### 1️⃣ Dati Biometrici Base")
+    c_eta, c_alt, c_ses = st.columns(3)
+    new_eta = c_eta.number_input("Età", min_value=10, max_value=120, value=curr_eta, step=1)
+    new_alt = c_alt.number_input("Altezza (cm)", min_value=100, max_value=250, value=curr_alt, step=1)
+    new_sesso = c_ses.selectbox("Sesso", ["Uomo", "Donna"], index=0 if curr_sesso=="Uomo" else 1)
+
+    st.divider()
+
+    # ---------------------------------------------------------------------------------
+    # SEZIONE 2: Composizione Corporea
+    # ---------------------------------------------------------------------------------
+    st.markdown("### 2️⃣ Peso e Composizione Corporea")
+    
+    c_data, c_peso, c_bmi = st.columns([1, 1, 1.5])
+    data_pesata = c_data.date_input("Data Pesata/Misurazione", pd.to_datetime('today').date())
+    new_peso = c_peso.number_input("Peso (kg)", min_value=30.0, max_value=250.0, value=curr_peso, step=0.5)
+    
+    bmi = new_peso / ((new_alt / 100) ** 2) if new_alt > 0 else 0
+    c_bmi.metric("Indice di Massa Corporea (BMI)", f"{bmi:.1f}", help="Il rapporto matematico tra il tuo peso e il quadrato della tua altezza.")
+    
+    st.write("")
+    cc1, cc2, cc3, cc4 = st.columns(4)
+    new_mgrassa = cc1.number_input("% Massa Grassa", min_value=0.0, value=curr_mgrassa, step=0.5, help="La stima del grasso totale rispetto alla massa complessiva.")
+    new_mmusc = cc2.number_input("Massa Muscolare (kg)", min_value=0.0, value=curr_mmusc, step=0.5, help="La quantità totale di muscolo espressa in unità di peso.")
+    new_mossea = cc3.number_input("Massa Ossea (kg)", min_value=0.0, value=curr_mossea, step=0.1, help="Il peso specifico dello scheletro e dei minerali ossei.")
+    new_acqua = cc4.number_input("% Acqua Corporea", min_value=0.0, value=curr_acqua, step=0.5, help="Indica il livello di idratazione.")
+
+    with st.expander("📏 Circonferenze Corporee (Opzionali)"):
+        m1, m2, m3, m4 = st.columns(4)
+        new_collo = m1.number_input("Collo (cm)", min_value=0.0, value=curr_collo, step=0.5)
+        new_petto = m2.number_input("Petto/Dorso (cm)", min_value=0.0, value=curr_petto, step=0.5)
+        new_vita = m3.number_input("Vita/Addome (cm)", min_value=0.0, value=curr_vita, step=0.5)
+        new_fianchi = m4.number_input("Fianchi (cm)", min_value=0.0, value=curr_fianchi, step=0.5)
+        
+        m5, m6, m7, _ = st.columns(4)
+        new_braccio = m5.number_input("Braccio (cm)", min_value=0.0, value=curr_braccio, step=0.5)
+        new_coscia = m6.number_input("Coscia (cm)", min_value=0.0, value=curr_coscia, step=0.5)
+        new_polpaccio = m7.number_input("Polpaccio (cm)", min_value=0.0, value=curr_polpaccio, step=0.5)
+
+    st.divider()
+
+    # ---------------------------------------------------------------------------------
+    # SEZIONE 3: Livello di Attività e Obiettivo
+    # ---------------------------------------------------------------------------------
+    st.markdown("### 3️⃣ Livello di Attività e Obiettivo")
+    
+    c_att, c_ob = st.columns(2)
+    att_options = [
+        "Sedentario (Lavoro da scrivania, zero o poco sport)",
+        "Leggero (Passeggiate, sport 1-3 volte a settimana)",
+        "Moderato (Sport 3-5 volte a settimana)",
+        "Intenso (Sport 6-7 volte, allenamenti duri)",
+        "Atleta (Doppio allenamento o lavoro fisico pesante)"
+    ]
+    idx_att = 0
+    for i, opt in enumerate(att_options):
+        if curr_att.split(" ")[0].lower() in opt.lower():
+            idx_att = i; break
+            
+    new_att = c_att.selectbox("Livello di Attività Fisica", att_options, index=idx_att)
+
+    ob_options = ["Dimagrimento", "Definizione", "Mantenimento", "Ricomposizione Corporea", "Crescita Muscolare", "Aumento Peso"]
+    idx_ob = ob_options.index(curr_ob) if curr_ob in ob_options else 2
+    new_ob = c_ob.selectbox("Cosa vuoi ottenere?", ob_options, index=idx_ob)
+
+    # Calcolo Teorico Mifflin-St Jeor
+    if new_sesso == "Uomo": bmr = (10 * new_peso) + (6.25 * new_alt) - (5 * new_eta) + 5
+    else: bmr = (10 * new_peso) + (6.25 * new_alt) - (5 * new_eta) - 161
+    
+    moltiplicatori = {"Sedentario": 1.2, "Leggero": 1.375, "Moderato": 1.55, "Intenso": 1.725, "Atleta": 1.9}
+    tdee = bmr * moltiplicatori.get(new_att.split(" ")[0], 1.2)
+    adj = {"Dimagrimento": -500, "Definizione": -300, "Mantenimento": 0, "Ricomposizione Corporea": 0, "Crescita Muscolare": 300, "Aumento Peso": 500}
+    sugg_cal = tdee + adj.get(new_ob, 0)
+    sugg_p = new_peso * (2.2 if new_ob in ["Definizione", "Ricomposizione Corporea", "Dimagrimento"] else 2.0)
+    sugg_f = (sugg_cal * 0.25) / 9.0
+    sugg_c = max(0.0, (sugg_cal - (sugg_p * 4) - (sugg_f * 9)) / 4.0)
+
+    st.info(f"💡 **Fabbisogno Suggerito (Mifflin-St Jeor):** 🔥 **{sugg_cal:.0f} kcal** | 🍞 C: **{sugg_c:.0f}g** | 🥩 P: **{sugg_p:.0f}g** | 🥑 G: **{sugg_f:.0f}g**")
+    
+    def applica_suggeriti():
+        st.session_state.t_cal = float(round(sugg_cal))
+        st.session_state.t_c = float(round(sugg_c))
+        st.session_state.t_p = float(round(sugg_p))
+        st.session_state.t_f = float(round(sugg_f))
+        
+    st.button("🪄 Applica Valori Suggeriti", on_click=applica_suggeriti, use_container_width=True)
+
+    st.markdown("### 🎯 I Tuoi Target Attuali e Gestione Macros")
+    
+    # Opzioni di controllo avanzato
+    col_flag1, col_lock1, col_lock2, col_lock3 = st.columns(4)
+    preserva_cal = col_flag1.checkbox("🔒 Preserva Calorie Fisse", value=True, help="Mantiene le calorie costanti ridistribuendo i macro in automatico se modifichi un valore.")
+    lock_p = col_lock1.checkbox("Blocca Proteine", value=False)
+    lock_f = col_lock2.checkbox("Blocca Grassi", value=False)
+    lock_c = col_lock3.checkbox("Blocca Carboidrati", value=False)
+
+    tc1, tc2, tc3, tc4 = st.columns(4)
+    
+    # Callback per gestire la logica interattiva dei macro e delle calorie
+    def aggiorna_da_calorie():
+        # Se cambiano le calorie e nulla è bloccato, ricalcoliamo i macro in proporzione classica
+        pass
+
+    final_cal = tc1.number_input("Target Calorie (kcal)", key="t_cal", step=50.0)
+    
+    # Calcolo interattivo in base ai flag
+    # Se l'utente modifica i grammi, gestiamo il bilanciamento
+    old_c = st.session_state.t_c
+    old_p = st.session_state.t_p
+    old_f = st.session_state.t_f
+
+    final_c = tc2.number_input("Carboidrati (g)", key="t_c", step=5.0)
+    final_p = tc3.number_input("Proteine (g)", key="t_p", step=5.0)
+    final_f = tc4.number_input("Grassi (g)", key="t_f", step=5.0)
+
+    # Logica di bilanciamento automatica se preserva_cal è attivo
+    if preserva_cal:
+        cal_stimata_da_macro = (final_c * 4) + (final_p * 4) + (final_f * 9)
+        # Se le calorie nei campi differiscono dal target calorico impostato, aggiustiamo il campo non bloccato
+        if abs(cal_stimata_da_macro - final_cal) > 1.0:
+            diff_cal = final_cal - cal_stimata_da_macro
+            # Vediamo chi può assorbire la differenza
+            if not lock_c and lock_p and lock_f:
+                st.session_state.t_c = max(0.0, final_c + (diff_cal / 4.0))
+            elif not lock_p and lock_c and lock_f:
+                st.session_state.t_p = max(0.0, final_p + (diff_cal / 4.0))
+            elif not lock_f and lock_c and lock_p:
+                st.session_state.t_f = max(0.0, final_f + (diff_cal / 9.0))
+            elif not lock_c and not lock_p and lock_f:
+                # Se due sono liberi, distribuiamo su carb e prot (es. metà e metà o proporzionale)
+                st.session_state.t_c = max(0.0, final_c + (diff_cal / 2.0 / 4.0))
+                st.session_state.t_p = max(0.0, final_p + (diff_cal / 2.0 / 4.0))
+            # Aggiorniamo le variabili finali post-ricalcolo
+            final_c = st.session_state.t_c
+            final_p = st.session_state.t_p
+            final_f = st.session_state.t_f
+    else:
+        # Se non preserviamo le calorie, le calorie diventano la somma matematica esatta dei macro inseriti
+        st.session_state.t_cal = float(round((final_c * 4) + (final_p * 4) + (final_f * 9)))
+        final_cal = st.session_state.t_cal
+
+    # Calcolo Percentuali e Rapporti su kg di peso corporeo
+    tot_cal_macro = (final_c * 4) + (final_p * 4) + (final_f * 9)
+    p_carb = (final_c * 4 / tot_cal_macro * 100) if tot_cal_macro > 0 else 0
+    p_prot = (final_p * 4 / tot_cal_macro * 100) if tot_cal_macro > 0 else 0
+    p_gras = (final_f * 9 / tot_cal_macro * 100) if tot_cal_macro > 0 else 0
+
+    r_carb = final_c / new_peso if new_peso > 0 else 0
+    r_prot = final_p / new_peso if new_peso > 0 else 0
+    r_gras = final_f / new_peso if new_peso > 0 else 0
+
+    st.markdown(f"""
+    <div style="background-color: #f0f2f6; padding: 10px; border-radius: 8px; font-size: 14px; margin-bottom: 15px;">
+        <b>📊 Ripartizione Energetica Attuale:</b><br>
+        🍞 Carboidrati: <b>{p_carb:.1f}%</b> ({r_carb:.2f} g/kg) | 
+        🥩 Proteine: <b>{p_prot:.1f}%</b> ({r_prot:.2f} g/kg) | 
+        🥑 Grassi: <b>{p_gras:.1f}%</b> ({r_gras:.2f} g/kg)
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.write("")
+    if st.button(f"💾 Salva Profilo e Registra Misurazione al {data_pesata.strftime('%d/%m/%Y')}", type="primary", use_container_width=True):
+        with st.spinner("Salvataggio in corso..."):
+            salvataggio_att = new_att.split(" (")[0]
+            salva_profilo_utente(
+                USER_ID, data_pesata, new_peso, new_alt, new_eta, new_sesso, salvataggio_att, 
+                final_cal, final_c, final_p, final_f, new_ob, 
+                new_collo, new_petto, new_vita, new_fianchi, new_braccio, new_coscia, new_polpaccio,
+                new_mgrassa, new_mmusc, new_mossea, new_acqua
+            )
+            st.success("✅ Dati aggiornati! La misurazione è stata registrata nello storico.")
+
+with tab_storico:
+    df_storico = get_storico_profilo(USER_ID)
+    if not df_storico.empty:
+        df_storico['data'] = pd.to_datetime(df_storico['data'])
+        
+        c_peso, c_mis = st.columns([1, 1])
+        with c_peso:
+            st.markdown("### 📉 Andamento Peso (kg)")
+            fig_peso = px.line(df_storico, x='data', y='peso', markers=True, hover_data=['obiettivo'], color_discrete_sequence=['#FF4B4B'])
+            fig_peso.update_layout(xaxis_title="", yaxis_title="Peso (kg)", hovermode="x unified", height=350, showlegend=False)
+            st.plotly_chart(fig_peso, use_container_width=True)
+
+        with c_mis:
+            st.markdown("### 📊 Composizione Corporea (%)")
+            comp_cols = ['massa_grassa', 'acqua_corporea']
+            comp_labels = {'massa_grassa': 'Massa Grassa %', 'acqua_corporea': 'Acqua Corporea %'}
+            comp_valide = [col for col in comp_cols if df_storico[col].sum() > 0]
+            
+            if comp_valide:
+                fig_comp = px.line(df_storico, x='data', y=comp_valide, markers=True, color_discrete_sequence=['#FFA500', '#00BFFF'])
+                fig_comp.for_each_trace(lambda t: t.update(name=comp_labels.get(t.name, t.name)))
+                fig_comp.update_layout(xaxis_title="", yaxis_title="Percentuale (%)", hovermode="x unified", height=350, legend_title="")
+                st.plotly_chart(fig_comp, use_container_width=True)
+            else:
+                st.info("Nessun dato percentuale sulla composizione registrato.")
+
+        st.divider()
+        st.markdown("### 📏 Andamento Circonferenze (cm)")
+        misure_cols = ['circ_collo', 'circ_petto', 'circ_vita', 'circ_fianchi', 'circ_braccio', 'circ_coscia', 'circ_polpaccio']
+        misure_labels = {'circ_collo': 'Collo', 'circ_petto': 'Petto', 'circ_vita': 'Vita', 'circ_fianchi': 'Fianchi', 'circ_braccio': 'Braccio', 'circ_coscia': 'Coscia', 'circ_polpaccio': 'Polpaccio'}
+        
+        misure_valide = [col for col in misure_cols if df_storico[col].sum() > 0]
+        
+        if misure_valide:
+            fig_mis = px.line(df_storico, x='data', y=misure_valide, markers=True)
+            fig_mis.for_each_trace(lambda t: t.update(name=misure_labels.get(t.name, t.name)))
+            fig_mis.update_layout(xaxis_title="", yaxis_title="Centimetri (cm)", hovermode="x unified", height=350, legend_title="")
+            st.plotly_chart(fig_mis, use_container_width=True)
         else:
-            st.error("Errore di salvataggio in Cloud. Riprova più tardi.")
+            st.info("Nessuna misurazione centimetrica registrata finora.")
+
+        with st.expander("📅 Vedi Tabella Dati Storici Completa"):
+            df_storico_view = df_storico.sort_values('data', ascending=False)
+            rename_dict = {
+                'data': 'Data', 'obiettivo': 'Obiettivo', 'peso': 'Peso',
+                'massa_grassa': 'Massa Grassa %', 'massa_muscolare': 'Massa Musc (kg)', 'massa_ossea': 'Ossea (kg)', 'acqua_corporea': 'Acqua %',
+                'tgt_cal': 'Target Kcal', 'tgt_c': 'Carb (g)', 'tgt_p': 'Prot (g)', 'tgt_f': 'Gras (g)',
+                'circ_collo': 'Collo', 'circ_petto': 'Petto', 'circ_vita': 'Vita', 
+                'circ_fianchi': 'Fianchi', 'circ_braccio': 'Braccio', 'circ_coscia': 'Coscia', 'circ_polpaccio': 'Polpaccio'
+            }
+            df_storico_view = df_storico_view.rename(columns=rename_dict)
+            
+            st.dataframe(
+                df_storico_view.style.format({
+                    "Peso": "{:.1f} kg", "Target Kcal": "{:.0f}", "Carb (g)": "{:.0f}", "Prot (g)": "{:.0f}", "Gras (g)": "{:.0f}",
+                    "Massa Grassa %": "{:.1f}%", "Massa Musc (kg)": "{:.1f} kg", "Ossea (kg)": "{:.1f} kg", "Acqua %": "{:.1f}%",
+                    "Collo": "{:.1f}", "Petto": "{:.1f}", "Vita": "{:.1f}", "Fianchi": "{:.1f}", "Braccio": "{:.1f}", "Coscia": "{:.1f}", "Polpaccio": "{:.1f}"
+                }), 
+                hide_index=True, use_container_width=True
+            )
+    else:
+        st.info("ℹ️ Nessuno storico disponibile. Clicca su '💾 Salva Dati' nella prima scheda per creare il tuo record iniziale!")

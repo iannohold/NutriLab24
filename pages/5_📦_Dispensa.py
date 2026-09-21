@@ -6,6 +6,8 @@ from services.db import (
 )
 from components.nav import render_top_nav
 
+st.set_page_config(page_title="NutriLab24", layout="wide")
+
 # # 1. Controllo di sicurezza centralizzato
 from components.auth import require_login
 require_login()

@@ -1,7 +1,10 @@
 import streamlit as st
+from streamlit_cookies_controller import CookieController
 
 # Configurazione base della pagina (deve essere la prima istruzione)
 st.set_page_config(page_title="NutriLab", page_icon="🧪", layout="wide")
+
+cookie_controller = CookieController()
 
 # =========================================================
 # 📱 STYLING RESPONSIVE (NASCONDI SIDEBAR SU MOBILE)
@@ -26,6 +29,7 @@ st.markdown(
 UTENTI = {
     "vins": {"password": "admin!", "nome": "Vincenzo", "is_admin": True},
     "monella": {"password": "user1!", "nome": "Silvia", "is_admin": False},
+    "matteo": {"password": "matt", "nome": "Utente Ospite", "is_admin": False},
     "ospite": {"password": "test!", "nome": "Utente Ospite", "is_admin": False}
 }
 
@@ -39,13 +43,21 @@ if "username" not in st.session_state:
 if "is_admin" not in st.session_state: 
     st.session_state.is_admin = False
 
-# Auto-login tramite URL (es. ?user=vins)
+# 1. Auto-login tramite Cookie (Dura 30 giorni)
+saved_user = cookie_controller.get('nutrilab_user')
+if not st.session_state.logged_in and saved_user and saved_user in UTENTI:
+    st.session_state.logged_in = True
+    st.session_state.username = saved_user
+    st.session_state.is_admin = UTENTI[saved_user]["is_admin"]
+
+# 2. Auto-login tramite URL
 if not st.session_state.logged_in and "user" in st.query_params:
     q_user = st.query_params["user"]
     if q_user in UTENTI:
         st.session_state.logged_in = True
         st.session_state.username = q_user
         st.session_state.is_admin = UTENTI[q_user]["is_admin"]
+        cookie_controller.set('nutrilab_user', q_user, max_age=2592000)
 
 # =========================================================
 # 🚪 SCHERMATA DI LOGIN
@@ -67,6 +79,8 @@ if not st.session_state.logged_in:
                     st.session_state.username = username_input
                     st.session_state.is_admin = UTENTI[username_input]["is_admin"]
                     st.query_params["user"] = username_input 
+                    # Imposta il cookie per 30 giorni
+                    cookie_controller.set('nutrilab_user', username_input, max_age=2592000)
                     st.success("✅ Accesso effettuato!")
                     st.rerun()
                 else:
@@ -114,6 +128,8 @@ if col_logout.button("🚪 Logout", type="secondary", use_container_width=True):
     st.session_state.is_admin = False
     if "user" in st.query_params: 
         del st.query_params["user"]
+    # Rimuove il Cookie al momento del logout
+    cookie_controller.remove('nutrilab_user')
     st.cache_data.clear()
     st.rerun()
 

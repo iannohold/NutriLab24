@@ -32,6 +32,7 @@ def get_conn():
 def get_ean_mapping(user_id):
     conn = get_conn()
     try:
+        # LETTURA: stringa semplice
         query = "SELECT nome, ean FROM macros WHERE ean IS NOT NULL AND ean != '' AND LOWER(user_id) IN (LOWER(:adm), LOWER(:uid))"
         df = conn.query(query, params={"adm": ADMIN_ID, "uid": user_id}, ttl=0)
         if not df.empty:
@@ -43,6 +44,7 @@ def get_ean_mapping(user_id):
 def get_user_macros_db(user_id):
     conn = get_conn()
     try:
+        # LETTURA: stringa semplice
         query = """
             SELECT nome, calorie, carboidrati, proteine, grassi, di_cui_saturi, fibre, sale, 
                    var_cottura, peso_medio_pz, unita_default, marca, tipologia, user_id 
@@ -86,6 +88,7 @@ def salva_su_cloud(nome, cal, p, c, f, sat, fib, sale, var_cott, peso_pz, unita_
     conn = get_conn()
     try:
         with conn.engine.begin() as e:
+            # SCRITTURA: serve text()
             e.execute(text("DELETE FROM macros WHERE LOWER(nome) = LOWER(:nome) AND LOWER(user_id) = LOWER(:uid)"), 
                       {"nome": nome, "uid": user_id})
             
@@ -203,122 +206,13 @@ def svuota_laboratorio():
     salva_bozza_locale()
 
 # ==========================================
-# 📝 PARSING E RICETTE
-# ==========================================
-
-def parse_ingredient_line(line):
-    line = line.strip()
-    if not line or line.startswith('#'): return None
-    line = re.sub(r'^[\-\*\•]\s*', '', line)
-    
-    if ',' in line:
-        parts = [p.strip() for p in line.split(',')]
-        if len(parts) >= 2:
-            try:
-                qty = float(parts[1])
-                unit_str = parts[2].lower() if len(parts) > 2 else ""
-                unit = 'ml' if unit_str in ['ml', 'l'] else 'pz' if unit_str in ['pz', 'pezzi'] else 'g'
-                if unit_str in ['kg', 'l']: qty *= 1000
-                return qty, unit, parts[0]
-            except ValueError: pass 
-            
-    match = re.match(r'^([0-9\.,]+)\s*(g|gr|ml|l|pz|kg|cucchiai|cucchiaini)?\s*(?:di\s+|d\')?\s*(.*)$', line, re.IGNORECASE)
-    if match:
-        qty = float(match.group(1).replace(',', '.'))
-        u_s = (match.group(2) or '').lower()
-        u = 'ml' if u_s in ['ml','l'] else 'pz' if u_s == 'pz' else 'g'
-        if u_s in ['kg', 'l']: qty *= 1000
-        return qty, u, match.group(3).strip()
-    return 100.0, 'g', line 
-
-def process_ingredient_list(lines):
-    aggiunti = 0
-    if "ingredients" not in st.session_state: st.session_state.ingredients = []
-    for line in lines:
-        parsed = parse_ingredient_line(line)
-        if not parsed: continue
-        qty, unit, name = parsed
-        m_name, cal, p, c, f, fib, sat, sale, var_cott, db_peso_pz, db_unita, m_marca, m_tipo = get_macros_and_match(name)
-        if unit == 'g' and qty < 20 and any(x in name.lower() for x in ["uov", "banan", "datter"]): unit = 'pz'
-        st.session_state.ingredients.append({
-            "id": uuid.uuid4().hex, "nome": name.title(), "matched_name": m_name, 
-            "quantita": qty, "unita": unit, "peso_pz": db_peso_pz, "peso": qty * db_peso_pz if unit == 'pz' else qty, 
-            "ruolo": "Impasto", "cal_100": cal, "prot_100": p, "carb_100": c, "fat_100": f, "sat_100": sat, "fib_100": fib, "sale_100": sale
-        })
-        aggiunti += 1
-    salva_bozza_locale()
-    return aggiunti
-
-def ricalcola_ingrediente(ing_id):
-    if "ingredients" not in st.session_state: return
-    for ing in st.session_state.ingredients:
-        if ing['id'] == ing_id:
-            ing['nome'] = st.session_state.get(f"n_{ing_id}", ing['nome'])
-            ing['quantita'] = st.session_state.get(f"q_{ing_id}", ing['quantita'])
-            ing['unita'] = st.session_state.get(f"u_{ing_id}", ing['unita'])
-            ing['ruolo'] = st.session_state.get(f"ruolo_{ing_id}", ing.get('ruolo', 'Impasto'))
-            if ing['unita'] == 'pz': ing['peso_pz'] = st.session_state.get(f"pw_{ing_id}", 0.0)
-            ing['peso'] = ing['quantita'] * ing['peso_pz'] if ing['unita'] == 'pz' else ing['quantita']
-            ing['cal_100'] = st.session_state.get(f"cal2_{ing_id}", ing['cal_100'])
-            ing['prot_100'] = st.session_state.get(f"p2_{ing_id}", ing['prot_100'])
-            ing['carb_100'] = st.session_state.get(f"c2_{ing_id}", ing['carb_100'])
-            ing['fat_100'] = st.session_state.get(f"f2_{ing_id}", ing['fat_100'])
-            ing['sat_100'] = st.session_state.get(f"sat2_{ing_id}", ing.get('sat_100', 0.0))
-            ing['fib_100'] = st.session_state.get(f"fib2_{ing_id}", ing.get('fib_100', 0.0))
-            ing['sale_100'] = st.session_state.get(f"sale2_{ing_id}", ing.get('sale_100', 0.0))
-            break
-    salva_bozza_locale()
-
-def safe_fl(val, default=0.0):
-    try: return float(val) if pd.notna(val) else default
-    except: return default
-
-def ripristina_ricetta(df):
-    if df.empty: return
-    row0 = df.iloc[0]
-    nome_r = str(row0.get('Ricetta_Nome', 'Nuova Ricetta'))
-    if not nome_r or nome_r.lower() in ['nan', 'none', '']: nome_r = "Nuova Ricetta"
-    st.session_state.nome_ricetta = nome_r
-    st.session_state.procedimento = str(row0.get('Ricetta_Procedimento', '') or '')
-    st.session_state.riposo = str(row0.get('Ricetta_Riposo', '') or '')
-    cat_str = str(row0.get('Ricetta_Categorie', '') or '')
-    if cat_str and cat_str.lower() != 'nan': st.session_state.tipo_ricetta = [c.strip() for c in cat_str.split(',')]
-    else: st.session_state.tipo_ricetta = []
-    st.session_state.porzioni = int(safe_fl(row0.get('Ricetta_Porzioni', 1), 1))
-    st.session_state.richiede_cottura = bool(row0.get('Cottura_Richiesta', False))
-    st.session_state.m_cot = str(row0.get('Cottura_Modalita', 'Forno') or 'Forno')
-    st.session_state.t_cot = str(row0.get('Cottura_Tempo', '') or '')
-    st.session_state.temp_cot = int(safe_fl(row0.get('Cottura_Temperatura', 180), 180))
-    st.session_state.tipo_resa = str(row0.get('Cottura_TipoResa', 'Usa % di stima') or 'Usa % di stima')
-    if 'Cottura_Variazione' in row0: st.session_state.var_cottura = float(safe_fl(row0['Cottura_Variazione'], -15.0))
-    else: st.session_state.var_cottura = -float(safe_fl(row0.get('Cottura_Calo', 15.0), 15.0))
-    st.session_state.peso_cotto_reale = float(safe_fl(row0.get('Cottura_PesoReale', 85.0), 85.0))
-    st.session_state.qta_teglia = float(safe_fl(row0.get('Cottura_QtaTeglia', 100.0), 100.0))
-    st.session_state.ingredients = []
-    for _, row in df.iterrows():
-        qty = safe_fl(row.get('Quantita', 0))
-        u = str(row.get('Unita', 'g')).strip()
-        pz_w = safe_fl(row.get('Peso_pz', 0.0), 0.0)
-        nome_ing = str(row.get('Nome', 'Ingrediente')).strip()
-        if not nome_ing or nome_ing.lower() in ['nan', 'none']: nome_ing = "Ingrediente"
-        st.session_state.ingredients.append({
-            "id": uuid.uuid4().hex, "nome": nome_ing, "matched_name": nome_ing,
-            "quantita": qty, "unita": u, "peso_pz": pz_w, "peso": qty * pz_w if u == 'pz' else qty,
-            "ruolo": str(row.get('Utilizzo', 'Impasto')) if pd.notna(row.get('Utilizzo')) else 'Impasto',
-            "cal_100": safe_fl(row.get('Cal_100g'), 0.0), "prot_100": safe_fl(row.get('Prot_100g'), 0.0),
-            "carb_100": safe_fl(row.get('Carb_100g'), 0.0), "fat_100": safe_fl(row.get('Fat_100g'), 0.0),
-            "sat_100": safe_fl(row.get('Sat_100g'), 0.0), "fib_100": safe_fl(row.get('Fib_100g'), 0.0),
-            "sale_100": safe_fl(row.get('Sale_100g'), 0.0)
-        })
-    salva_bozza_locale()
-
-# ==========================================
 # 🧪 CLOUD RICETTE
 # ==========================================
 
 def get_ricette_utente_e_community(user_id, admin_id):
     conn = get_conn()
     try:
+        # LETTURA: stringa semplice
         query = """
             SELECT nome_ricetta AS "Nome Ricetta", categoria AS "Categoria", 
                    dati_json AS "Dati JSON", user_id AS "User_ID", condivisa AS "Condivisa" 
@@ -361,12 +255,13 @@ def elimina_ricetta_cloud(user_id, nome_ricetta):
         return False
 
 # ==========================================
-# 📅 GESTIONE DIARIO E MEAL PLANNER
+# 📅 GESTIONE DIARIO
 # ==========================================
 
 def get_diario_utente(user_id):
     conn = get_conn()
     try:
+        # LETTURA: stringa semplice
         query_sql = """
             SELECT id, data, pasto, elemento, quantita, unita, calorie, carboidrati, proteine, 
                    grassi, saturi, fibre, sale, user_id, tgt_cal, tgt_c, tgt_p, tgt_f, stato 
@@ -407,9 +302,14 @@ def aggiorna_voce_diario(id_voce, nuova_qta, cal, c, p, f, sal, stato, elemento=
         return True
     except: return False
 
+# ==========================================
+# 📆 GESTIONE MEAL PLANNER
+# ==========================================
+
 def get_pasti_futuri_utente(user_id, oggi_str):
     conn = get_conn()
     try:
+        # LETTURA: stringa semplice
         query_sql = """
             SELECT id, data, pasto, elemento, quantita, unita, calorie, carboidrati, proteine, 
                    grassi, saturi, fibre, sale, user_id, tgt_cal, tgt_c, tgt_p, tgt_f, stato 
@@ -457,6 +357,7 @@ def clona_giornata_db(nuovi_pasti_list):
 def get_dispensa_utente(user_id):
     conn = get_conn()
     try:
+        # LETTURA: stringa semplice
         query = "SELECT user_id, nome, quantita, unita, monitora FROM dispensa WHERE LOWER(user_id) = LOWER(:uid)"
         df = conn.query(query, params={"uid": user_id}, ttl=0)
         if df.empty: return pd.DataFrame(columns=["User_ID", "Nome", "Quantita", "Unita", "Monitora"])
@@ -495,80 +396,30 @@ def salva_modifiche_dispensa(user_id, edited_df):
         st.error(f"🚨 ERRORE SALVATAGGIO DISPENSA: {ex}")
         return False
 
-# ----------------- PROFILO E STORICO -----------------
-
 def get_profilo_utente(user_id):
     conn = get_conn()
     try:
-        query = """
-            SELECT user_id, peso, altezza, eta, sesso, attivita, tgt_cal, tgt_c, tgt_p, tgt_f,
-                   obiettivo, circ_collo, circ_petto, circ_vita, circ_fianchi, circ_braccio, circ_coscia, circ_polpaccio,
-                   massa_grassa, massa_muscolare, massa_ossea, acqua_corporea 
-            FROM profilo WHERE LOWER(user_id) = LOWER(:uid)
-        """
+        # LETTURA: stringa semplice
+        query = "SELECT user_id, peso, altezza, eta, sesso, attivita, tgt_cal, tgt_c, tgt_p, tgt_f FROM profilo WHERE LOWER(user_id) = LOWER(:uid)"
         df = conn.query(query, params={"uid": user_id}, ttl=0)
-        if not df.empty: df.columns = [c.lower() for c in df.columns]
+        if df.empty: return pd.DataFrame(columns=["User_ID", "Peso", "Altezza", "Eta", "Sesso", "Attivita", "TGT_Cal", "TGT_C", "TGT_P", "TGT_F"])
+        df.columns = ["User_ID", "Peso", "Altezza", "Eta", "Sesso", "Attivita", "TGT_Cal", "TGT_C", "TGT_P", "TGT_F"]
         return df
-    except: return pd.DataFrame()
+    except: return pd.DataFrame(columns=["User_ID", "Peso", "Altezza", "Eta", "Sesso", "Attivita", "TGT_Cal", "TGT_C", "TGT_P", "TGT_F"])
 
-def salva_profilo_utente(user_id, data_pesata, peso, altezza, eta, sesso, attivita, tgt_cal, tgt_c, tgt_p, tgt_f, 
-                         obiettivo, c_col, c_pet, c_vit, c_fia, c_bra, c_cos, c_pol, m_grassa, m_musc, m_ossea, acqua):
+def salva_profilo_utente(user_id, peso, altezza, eta, sesso, attivita, tgt_cal, tgt_c, tgt_p, tgt_f):
     conn = get_conn()
     try:
         with conn.engine.begin() as e:
-            query_prof = text("""
-                INSERT INTO profilo (user_id, peso, altezza, eta, sesso, attivita, tgt_cal, tgt_c, tgt_p, tgt_f, 
-                                     obiettivo, circ_collo, circ_petto, circ_vita, circ_fianchi, circ_braccio, circ_coscia, circ_polpaccio,
-                                     massa_grassa, massa_muscolare, massa_ossea, acqua_corporea) 
-                VALUES (:uid, :peso, :altezza, :eta, :sesso, :attivita, :tgt_cal, :tgt_c, :tgt_p, :tgt_f, 
-                        :ob, :c_col, :c_pet, :c_vit, :c_fia, :c_bra, :c_cos, :c_pol, :m_gra, :m_mus, :m_oss, :acq) 
+            query = text("""
+                INSERT INTO profilo (user_id, peso, altezza, eta, sesso, attivita, tgt_cal, tgt_c, tgt_p, tgt_f) 
+                VALUES (:uid, :peso, :altezza, :eta, :sesso, :attivita, :tgt_cal, :tgt_c, :tgt_p, :tgt_f) 
                 ON CONFLICT (user_id) 
-                DO UPDATE SET peso=EXCLUDED.peso, altezza=EXCLUDED.altezza, eta=EXCLUDED.eta, sesso=EXCLUDED.sesso, attivita=EXCLUDED.attivita, 
-                              tgt_cal=EXCLUDED.tgt_cal, tgt_c=EXCLUDED.tgt_c, tgt_p=EXCLUDED.tgt_p, tgt_f=EXCLUDED.tgt_f, obiettivo=EXCLUDED.obiettivo, 
-                              circ_collo=EXCLUDED.circ_collo, circ_petto=EXCLUDED.circ_petto, circ_vita=EXCLUDED.circ_vita, 
-                              circ_fianchi=EXCLUDED.circ_fianchi, circ_braccio=EXCLUDED.circ_braccio, circ_coscia=EXCLUDED.circ_coscia, circ_polpaccio=EXCLUDED.circ_polpaccio,
-                              massa_grassa=EXCLUDED.massa_grassa, massa_muscolare=EXCLUDED.massa_muscolare, massa_ossea=EXCLUDED.massa_ossea, acqua_corporea=EXCLUDED.acqua_corporea
+                DO UPDATE SET peso = EXCLUDED.peso, altezza = EXCLUDED.altezza, eta = EXCLUDED.eta, 
+                              sesso = EXCLUDED.sesso, attivita = EXCLUDED.attivita, tgt_cal = EXCLUDED.tgt_cal, 
+                              tgt_c = EXCLUDED.tgt_c, tgt_p = EXCLUDED.tgt_p, tgt_f = EXCLUDED.tgt_f
             """)
-            e.execute(query_prof, {
-                "uid": user_id, "peso": peso, "altezza": altezza, "eta": eta, "sesso": sesso, "attivita": attivita, 
-                "tgt_cal": tgt_cal, "tgt_c": tgt_c, "tgt_p": tgt_p, "tgt_f": tgt_f, "ob": obiettivo,
-                "c_col": c_col, "c_pet": c_pet, "c_vit": c_vit, "c_fia": c_fia, "c_bra": c_bra, "c_cos": c_cos, "c_pol": c_pol,
-                "m_gra": m_grassa, "m_mus": m_musc, "m_oss": m_ossea, "acq": acqua
-            })
-            
-            query_storico = text("""
-                INSERT INTO storico_profilo (user_id, data, peso, tgt_cal, tgt_c, tgt_p, tgt_f, 
-                                             obiettivo, circ_collo, circ_petto, circ_vita, circ_fianchi, circ_braccio, circ_coscia, circ_polpaccio,
-                                             massa_grassa, massa_muscolare, massa_ossea, acqua_corporea)
-                VALUES (:uid, :data, :peso, :tgt_cal, :tgt_c, :tgt_p, :tgt_f, 
-                        :ob, :c_col, :c_pet, :c_vit, :c_fia, :c_bra, :c_cos, :c_pol, :m_gra, :m_mus, :m_oss, :acq)
-                ON CONFLICT (user_id, data) 
-                DO UPDATE SET peso=EXCLUDED.peso, tgt_cal=EXCLUDED.tgt_cal, tgt_c=EXCLUDED.tgt_c, tgt_p=EXCLUDED.tgt_p, tgt_f=EXCLUDED.tgt_f, 
-                              obiettivo=EXCLUDED.obiettivo, circ_collo=EXCLUDED.circ_collo, circ_petto=EXCLUDED.circ_petto, circ_vita=EXCLUDED.circ_vita, 
-                              circ_fianchi=EXCLUDED.circ_fianchi, circ_braccio=EXCLUDED.circ_braccio, circ_coscia=EXCLUDED.circ_coscia, circ_polpaccio=EXCLUDED.circ_polpaccio,
-                              massa_grassa=EXCLUDED.massa_grassa, massa_muscolare=EXCLUDED.massa_muscolare, massa_ossea=EXCLUDED.massa_ossea, acqua_corporea=EXCLUDED.acqua_corporea
-            """)
-            e.execute(query_storico, {
-                "uid": user_id, "data": str(data_pesata), "peso": peso, "tgt_cal": tgt_cal, "tgt_c": tgt_c, "tgt_p": tgt_p, "tgt_f": tgt_f,
-                "ob": obiettivo, "c_col": c_col, "c_pet": c_pet, "c_vit": c_vit, "c_fia": c_fia, "c_bra": c_bra, "c_cos": c_cos, "c_pol": c_pol,
-                "m_gra": m_grassa, "m_mus": m_musc, "m_oss": m_ossea, "acq": acqua
-            })
+            e.execute(query, {"uid": user_id, "peso": peso, "altezza": altezza, "eta": eta, "sesso": sesso, "attivita": attivita, "tgt_cal": tgt_cal, "tgt_c": tgt_c, "tgt_p": tgt_p, "tgt_f": tgt_f})
         st.cache_data.clear()
         return True
-    except Exception as ex: 
-        st.error(f"🚨 ERRORE SQL PROFILO: {ex}")
-        return False
-
-def get_storico_profilo(user_id):
-    conn = get_conn()
-    try:
-        query = """
-            SELECT data, peso, tgt_cal, tgt_c, tgt_p, tgt_f, obiettivo, 
-                   circ_collo, circ_petto, circ_vita, circ_fianchi, circ_braccio, circ_coscia, circ_polpaccio,
-                   massa_grassa, massa_muscolare, massa_ossea, acqua_corporea
-            FROM storico_profilo WHERE LOWER(user_id) = LOWER(:uid) ORDER BY data ASC
-        """
-        df = conn.query(query, params={"uid": user_id}, ttl=0)
-        if not df.empty: df.columns = [c.lower() for c in df.columns]
-        return df
-    except: return pd.DataFrame()
+    except: return False

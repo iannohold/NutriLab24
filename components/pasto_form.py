@@ -73,6 +73,20 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
     if "temp_recipe_diario" not in st.session_state: st.session_state.temp_recipe_diario = []
 
     # =========================================================
+    # LOGICA DI FILTRAGGIO GLOBALE
+    # =========================================================
+    tipologie_uniche = ["Tutte"] + sorted(list(set([v[11] for v in MACROS_DB.values() if len(v)>11 and v[11]])))
+    marche_uniche = ["Tutte"] + sorted(list(set([v[10] for v in MACROS_DB.values() if len(v)>10 and v[10]])))
+
+    def get_filtered_ingredients(tipo_sel, marca_sel):
+        filtrati = []
+        for k, v in MACROS_DB.items():
+            t_match = (tipo_sel == "Tutte" or (len(v)>11 and v[11] == tipo_sel))
+            m_match = (marca_sel == "Tutte" or (len(v)>10 and v[10] == marca_sel))
+            if t_match and m_match: filtrati.append(k)
+        return ["-- Seleziona --"] + sorted(filtrati)
+
+    # =========================================================
     # 📚 FLUSSO 1: RICETTARIO PERSONALE
     # =========================================================
     if tipo_inserimento_diario == "📚 Dal tuo Ricettario":
@@ -173,36 +187,44 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
     elif tipo_inserimento_diario == "🛒 Alimenti (Singoli o Multipli)":
         st.markdown("### 1️⃣ Componi il pasto nel Vassoio")
         
+        c_filt1, c_filt2 = st.columns(2)
+        f_tipo = c_filt1.selectbox("Filtra per Tipologia", tipologie_uniche, key=f"f_tipo_{data_selezionata}")
+        f_marca = c_filt2.selectbox("Filtra per Marca", marche_uniche, key=f"f_marca_{data_selezionata}")
+        
+        opzioni_vassoio = get_filtered_ingredients(f_tipo, f_marca)
+        
         def update_vassoio_from_selection():
             ing = st.session_state.get(f"vassoio_ing_{data_selezionata}")
             if ing and ing != "-- Seleziona --":
-                m_name, m_cal, m_p, m_c, m_f, m_fib, m_sat, m_var, peso_pz, unita_def = get_macros_and_match(ing)
+                res = get_macros_and_match(ing)
+                unita_def = res[11]
+                peso_pz = res[10]
                 st.session_state[f"vassoio_u_{data_selezionata}_sel"] = unita_def
                 st.session_state[f"vassoio_pz_{data_selezionata}"] = peso_pz if peso_pz > 0 else 0.0
 
         c_ing, c_qta, c_unit, c_pz, c_btn = st.columns([3, 1, 1, 1, 1.5])
-        ing_scelto = c_ing.selectbox("Cerca alimento:", ["-- Seleziona --"] + sorted(list(MACROS_DB.keys())), key=f"vassoio_ing_{data_selezionata}", on_change=update_vassoio_from_selection)
+        ing_scelto = c_ing.selectbox("Cerca alimento:", opzioni_vassoio, key=f"vassoio_ing_{data_selezionata}", on_change=update_vassoio_from_selection)
         qta_val = c_qta.number_input("Quantità", min_value=0.0, step=10.0, key=f"vassoio_qta_{data_selezionata}", value=None)
         
         idx_u = ["g", "ml", "pz"].index(st.session_state.get(f"vassoio_u_{data_selezionata}_sel", "g")) if st.session_state.get(f"vassoio_u_{data_selezionata}_sel") in ["g", "ml", "pz"] else 0
         unit_val = c_unit.selectbox("Unità", options=["g", "ml", "pz"], index=idx_u, key=f"vassoio_u_{data_selezionata}_sel")
         
         if unit_val == "pz": 
-            default_pz = MACROS_DB[ing_scelto][7] if ing_scelto != "-- Seleziona --" and ing_scelto in MACROS_DB else 0.0
+            default_pz = MACROS_DB[ing_scelto][8] if ing_scelto != "-- Seleziona --" and ing_scelto in MACROS_DB else 0.0
             pz_w = c_pz.number_input("Peso 1pz (g)", min_value=0.0, step=1.0, value=float(default_pz), key=f"vassoio_pz_{data_selezionata}")
         else: 
             pz_w = 0.0
 
         if ing_scelto != "-- Seleziona --" and qta_val is not None and qta_val > 0:
-            cal_p, p_p, c_p, f_p, _, _, _, _, _ = MACROS_DB[ing_scelto]
+            cal_p, p_p, c_p, f_p, _, _, sale_p, _, _, _, _, _ = MACROS_DB[ing_scelto]
             peso_p = qta_val * pz_w if unit_val == "pz" else qta_val
-            st.markdown(f"<div style='color:gray; font-size:14px; margin-top:-10px; margin-bottom:10px;'>📊 <b>Valori ({peso_p:.1f}g):</b> {cal_p*peso_p/100:.0f} kcal | C: {c_p*peso_p/100:.1f}g | P: {p_p*peso_p/100:.1f}g | G: {f_p*peso_p/100:.1f}g</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='color:gray; font-size:14px; margin-top:-10px; margin-bottom:10px;'>📊 <b>Valori ({peso_p:.1f}g):</b> {cal_p*peso_p/100:.0f} kcal | C: {c_p*peso_p/100:.1f}g | P: {p_p*peso_p/100:.1f}g | G: {f_p*peso_p/100:.1f}g | Sale: {sale_p*peso_p/100:.2f}g</div>", unsafe_allow_html=True)
 
         mostra_cottura = st.checkbox("🔥 Applica calo/aumento cottura all'ingrediente", key=f"chk_cotto_{data_selezionata}")
         var_cottura_da_salvare = 0.0
         
         if mostra_cottura and ing_scelto != "-- Seleziona --":
-            db_var = MACROS_DB[ing_scelto][6]
+            db_var = MACROS_DB[ing_scelto][7]
             if qta_val is not None and qta_val > 0:
                 peso_effettivo_crudo = qta_val * pz_w if unit_val == "pz" else qta_val
                 tipo_resa_vassoio = st.radio("Come vuoi calcolare la resa in cottura?", ["Usa % di stima", "Inserisci peso reale cotto"], horizontal=True, key=f"resa_{data_selezionata}")
@@ -221,8 +243,8 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                     if abs(var_cottura_da_salvare - db_var) > 0.1:
                         if st.button("💾 Aggiorna % nel Database Prodotti", key=f"btn_upd_var_{data_selezionata}"):
                             with st.spinner("Aggiornamento in corso..."):
-                                cal_db, p_db, c_db, f_db, fib_db, sat_db, _, peso_db, unita_db = MACROS_DB[ing_scelto]
-                                salva_su_cloud(ing_scelto, cal_db, p_db, c_db, f_db, sat_db, fib_db, var_cottura_da_salvare, peso_db, unita_db)
+                                cal_db, p_db, c_db, f_db, fib_db, sat_db, sale_db, _, peso_db, unita_db, marca_db, tipo_db = MACROS_DB[ing_scelto]
+                                salva_su_cloud(ing_scelto, cal_db, p_db, c_db, f_db, sat_db, fib_db, sale_db, var_cottura_da_salvare, peso_db, unita_db, marca_db, tipo_db)
                                 st.success("✅ Variazione aggiornata!")
                                 st.rerun()
 
@@ -240,7 +262,6 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                     "id": uuid.uuid4().hex, "nome": ing, "quantita": float(q), "unita": u,
                     "peso_pz": float(pw), "is_cotto": cotto, "var_cottura": vc
                 })
-                # Resetta i campi!
                 st.session_state[f"vassoio_ing_{data_selezionata}"] = "-- Seleziona --"
                 st.session_state[f"vassoio_qta_{data_selezionata}"] = None
                 st.session_state[f"vassoio_u_{data_selezionata}_sel"] = "g"
@@ -257,7 +278,7 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
 
         if st.session_state.diario_multi_items:
             st.markdown("### 🛒 Nel tuo Vassoio:")
-            m_cal_tot = m_p_tot = m_c_tot = m_f_tot = m_sat_tot = m_fib_tot = m_peso_tot = 0.0 
+            m_cal_tot = m_p_tot = m_c_tot = m_f_tot = m_sat_tot = m_fib_tot = m_peso_tot = m_sale_tot = 0.0 
             ingredienti_list = []
             
             for i, item in enumerate(st.session_state.diario_multi_items):
@@ -268,13 +289,14 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                     st.session_state.diario_multi_items = [it for it in st.session_state.diario_multi_items if it['id'] != item['id']]
                     st.rerun()
 
-                cal, p, c, f, fib, sat, _, _, _ = MACROS_DB[item["nome"]]
+                cal, p, c, f, fib, sat, sale, _, _, _, _, _ = MACROS_DB[item["nome"]]
                 peso_eff = new_qty * item.get("peso_pz", 0.0) if item["unita"] == "pz" else new_qty
                 
                 cal_i = (cal / 100) * peso_eff; c_i = (c / 100) * peso_eff; p_i = (p / 100) * peso_eff
                 f_i = (f / 100) * peso_eff; sat_i = (sat / 100) * peso_eff; fib_i = (fib / 100) * peso_eff
+                sale_i = (sale / 100) * peso_eff
                 
-                m_cal_tot += cal_i; m_p_tot += p_i; m_c_tot += c_i; m_f_tot += f_i; m_sat_tot += sat_i; m_fib_tot += fib_i
+                m_cal_tot += cal_i; m_p_tot += p_i; m_c_tot += c_i; m_f_tot += f_i; m_sat_tot += sat_i; m_fib_tot += fib_i; m_sale_tot += sale_i
                 
                 p_cotto_str = ""
                 if item.get("is_cotto"):
@@ -284,10 +306,10 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                 else:
                     m_peso_tot += peso_eff
                 
-                c1.write(f"🔹 **{item['nome']}** {p_cotto_str} *(Cal: {cal_i:.0f} | C: {c_i:.1f}g | P: {p_i:.1f}g | G: {f_i:.1f}g)*")
+                c1.write(f"🔹 **{item['nome']}** {p_cotto_str} *(Peso: {peso_eff:.1f}g | Cal: {cal_i:.0f} | C: {c_i:.1f}g | P: {p_i:.1f}g | G: {f_i:.1f}g | Sale: {sale_i:.2f}g)*")
                 ingredienti_list.append(f"{new_qty:g}{item['unita']} {item['nome']}")
                 
-            st.info(f"⚖️ **Report Vassoio:** Peso: **{m_peso_tot:.1f} g** | 🔥 **{m_cal_tot:.0f} kcal** | 🍞 C: **{m_c_tot:.1f}g** | 🥩 P: **{m_p_tot:.1f}g** | 🥑 G: **{m_f_tot:.1f}g** | Sat: **{m_sat_tot:.1f}g** | Fib: **{m_fib_tot:.1f}g**")
+            st.info(f"⚖️ **Report Vassoio:** Peso: **{m_peso_tot:.1f} g** | 🔥 **{m_cal_tot:.0f} kcal** | 🍞 C: **{m_c_tot:.1f}g** | 🥩 P: **{m_p_tot:.1f}g** | 🥑 G: **{m_f_tot:.1f}g** | Sat: **{m_sat_tot:.1f}g** | Fib: **{m_fib_tot:.1f}g** | Sale: **{m_sale_tot:.2f}g**")
             
             dividi_porzioni = st.checkbox("🔪 Dividi in porzioni", key=f"dividi_vass_{data_selezionata}")
             
@@ -341,7 +363,6 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                 p_p = m_p_tot * rt_consumo_vassoio
                 p_f = m_f_tot * rt_consumo_vassoio
                 
-                # Mostra il box di successo SOLO se è stata attivata la divisione in porzioni
                 if dividi_porzioni:
                     st.success(f"💡 Stai registrando il **{tot_perc_consumata:.1f}%** del vassoio.\n\n⚖️ Peso consumato: **{p_peso:.1f} g** | 🔥 Cal: **{p_cal:.0f} kcal** | 🍞 C: **{p_c:.1f}g** | 🥩 P: **{p_p:.1f}g** | 🥑 G: **{p_f:.1f}g**")
             
@@ -360,7 +381,7 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                     })
                 else:
                     for item in st.session_state.diario_multi_items:
-                        cal, p, c, f, fib, sat, _, _, _ = MACROS_DB[item["nome"]]
+                        cal, p, c, f, fib, sat, _, _, _, _, _, _ = MACROS_DB[item["nome"]]
                         peso_eff = item['quantita'] * item.get("peso_pz", 0.0) if item["unita"] == "pz" else item['quantita']
                         
                         p_cotto_str = f" (Cotto)" if item.get("is_cotto") else ""
@@ -382,29 +403,37 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
     elif tipo_inserimento_diario == "⏱️ Ricetta Libera (Al volo)":
         st.write("Aggiungi gli ingredienti per calcolare una preparazione veloce.")
         
+        c_filt1, c_filt2 = st.columns(2)
+        f_tipo_lib = c_filt1.selectbox("Filtra per Tipologia", tipologie_uniche, key=f"f_tipo_lib_{data_selezionata}")
+        f_marca_lib = c_filt2.selectbox("Filtra per Marca", marche_uniche, key=f"f_marca_lib_{data_selezionata}")
+        
+        opzioni_libera = get_filtered_ingredients(f_tipo_lib, f_marca_lib)
+
         def update_lib_from_selection():
             ing = st.session_state.get(f"ing_lib_sel_{data_selezionata}")
             if ing and ing != "-- Seleziona --":
-                m_name, m_cal, m_p, m_c, m_f, m_fib, m_sat, m_var, peso_pz, unita_def = get_macros_and_match(ing)
+                res = get_macros_and_match(ing)
+                unita_def = res[11]
+                peso_pz = res[10]
                 st.session_state[f"unit_lib_val_{data_selezionata}_sel"] = unita_def
                 st.session_state[f"lib_pz_w_{data_selezionata}"] = peso_pz if peso_pz > 0 else 0.0
 
         c_ing, c_qta, c_unit, c_pz, c_btn = st.columns([3, 1, 1, 1, 1.5])
-        ing_libero = c_ing.selectbox("Ingrediente", ["-- Seleziona --"] + sorted(list(MACROS_DB.keys())), key=f"ing_lib_sel_{data_selezionata}", on_change=update_lib_from_selection)
+        ing_libero = c_ing.selectbox("Ingrediente", opzioni_libera, key=f"ing_lib_sel_{data_selezionata}", on_change=update_lib_from_selection)
         qta_libera = c_qta.number_input("Quantità", min_value=0.0, step=10.0, key=f"qta_lib_val_{data_selezionata}", value=None)
         
         idx_u_lib = ["g", "ml", "pz"].index(st.session_state.get(f"unit_lib_val_{data_selezionata}_sel", "g")) if st.session_state.get(f"unit_lib_val_{data_selezionata}_sel") in ["g", "ml", "pz"] else 0
         unit_libera = c_unit.selectbox("Unità", options=["g", "ml", "pz"], key=f"unit_lib_val_{data_selezionata}_sel", index=idx_u_lib)
         
         if unit_libera == "pz": 
-            default_pz_lib = MACROS_DB[ing_libero][7] if ing_libero != "-- Seleziona --" and ing_libero in MACROS_DB else 0.0
+            default_pz_lib = MACROS_DB[ing_libero][8] if ing_libero != "-- Seleziona --" and ing_libero in MACROS_DB else 0.0
             pz_w_lib = c_pz.number_input("Peso 1pz (g)", min_value=0.0, step=1.0, value=float(default_pz_lib), key=f"lib_pz_w_{data_selezionata}")
         else: pz_w_lib = 0.0
 
         if ing_libero != "-- Seleziona --" and qta_libera is not None and qta_libera > 0:
-            cal_l, p_l, c_l, f_l, _, _, _, _, _ = MACROS_DB[ing_libero]
+            cal_l, p_l, c_l, f_l, _, _, sale_l, _, _, _, _, _ = MACROS_DB[ing_libero]
             peso_l = qta_libera * pz_w_lib if unit_libera == "pz" else qta_libera
-            st.markdown(f"<div style='color:gray; font-size:14px; margin-top:-10px; margin-bottom:10px;'>📊 <b>Valori ({peso_l:.1f}g):</b> {cal_l*peso_l/100:.0f} kcal | C: {c_l*peso_l/100:.1f}g | P: {p_l*peso_l/100:.1f}g | G: {f_l*peso_l/100:.1f}g</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='color:gray; font-size:14px; margin-top:-10px; margin-bottom:10px;'>📊 <b>Valori ({peso_l:.1f}g):</b> {cal_l*peso_l/100:.0f} kcal | C: {c_l*peso_l/100:.1f}g | P: {p_l*peso_l/100:.1f}g | G: {f_l*peso_l/100:.1f}g | Sale: {sale_l*peso_l/100:.2f}g</div>", unsafe_allow_html=True)
             
         def on_add_libero():
             ing = st.session_state.get(f"ing_lib_sel_{data_selezionata}", "-- Seleziona --")
@@ -428,7 +457,7 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                 
         if st.session_state.temp_recipe_diario:
             st.markdown("---")
-            w_raw_tot = m_cal_tot = m_p_tot = m_c_tot = m_f_tot = m_sat_tot = m_fib_tot = 0.0
+            w_raw_tot = m_cal_tot = m_p_tot = m_c_tot = m_f_tot = m_sat_tot = m_fib_tot = m_sale_tot = 0.0
             
             for i, ing in enumerate(st.session_state.temp_recipe_diario):
                 c1, c2, c3 = st.columns([0.6, 0.3, 0.1])
@@ -438,20 +467,22 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                     st.session_state.temp_recipe_diario = [item for item in st.session_state.temp_recipe_diario if item['id'] != ing['id']]
                     st.rerun()
                 
-                cal, p, c, f, fib, sat, _, _, _ = MACROS_DB[ing['nome']]
+                cal, p, c, f, fib, sat, sale, _, _, _, _, _ = MACROS_DB[ing['nome']]
                 peso_eff = new_qty * ing.get("peso_pz", 0.0) if ing['unita'] == 'pz' else new_qty
                 
                 w_raw_tot += peso_eff
                 cal_i = (cal / 100) * peso_eff; p_i = (p / 100) * peso_eff; c_i = (c / 100) * peso_eff; f_i = (f / 100) * peso_eff
-                m_cal_tot += cal_i; m_p_tot += p_i; m_c_tot += c_i; m_f_tot += f_i
-                m_sat_tot += (sat / 100) * peso_eff; m_fib_tot += (fib / 100) * peso_eff
+                sale_i = (sale / 100) * peso_eff
                 
-                c1.write(f"🔹 **{ing['nome']}** *(Cal: {cal_i:.0f} | C: {c_i:.1f}g | P: {p_i:.1f}g | G: {f_i:.1f}g)*")
+                m_cal_tot += cal_i; m_p_tot += p_i; m_c_tot += c_i; m_f_tot += f_i
+                m_sat_tot += (sat / 100) * peso_eff; m_fib_tot += (fib / 100) * peso_eff; m_sale_tot += sale_i
+                
+                c1.write(f"🔹 **{ing['nome']}** *(Peso: {peso_eff:.1f}g | Cal: {cal_i:.0f} | C: {c_i:.1f}g | P: {p_i:.1f}g | G: {f_i:.1f}g | Sale: {sale_i:.2f}g)*")
                 
             nome_libera = st.text_input("Dai un nome per ricordarla nel diario:", "Pasto al volo", key=f"n_lib_{data_selezionata}")
             peso_cotto_libero = st.number_input("Peso cotto finale (g)", min_value=1.0, value=float(w_raw_tot), key=f"peso_cot_lib_{data_selezionata}")
             
-            st.info(f"⚖️ **Report:** Peso a crudo: **{w_raw_tot:.1f} g** | Cotto/Finito: **{peso_cotto_libero:.1f} g** | 🔥 **{m_cal_tot:.0f} kcal** | 🍞 C: **{m_c_tot:.1f}g** | 🥩 P: **{m_p_tot:.1f}g** | 🥑 G: **{m_f_tot:.1f}g** | Sat: **{m_sat_tot:.1f}g** | Fib: **{m_fib_tot:.1f}g**")
+            st.info(f"⚖️ **Report:** Peso a crudo: **{w_raw_tot:.1f} g** | Cotto/Finito: **{peso_cotto_libero:.1f} g** | 🔥 **{m_cal_tot:.0f} kcal** | 🍞 C: **{m_c_tot:.1f}g** | 🥩 P: **{m_p_tot:.1f}g** | 🥑 G: **{m_f_tot:.1f}g** | Sale: **{m_sale_tot:.2f}g**")
             
             dividi_libera = st.checkbox("🔪 Dividi in porzioni", key=f"dividi_lib_{data_selezionata}")
             
@@ -506,7 +537,6 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                 p_p = m_p_tot * rt_consumo_lib
                 p_f = m_f_tot * rt_consumo_lib
                 
-                # Mostra il box di successo SOLO se è stata attivata la divisione in porzioni
                 if dividi_libera:
                     st.success(f"💡 Stai registrando il **{rt_consumo_lib*100:.1f}%** dell'intera preparazione.\n\n⚖️ Peso consumato: **{p_peso:.1f} g** | 🔥 Cal: **{p_cal:.0f} kcal** | 🍞 C: **{p_c:.1f}g** | 🥩 P: **{p_p:.1f}g** | 🥑 G: **{p_f:.1f}g**")
                 
