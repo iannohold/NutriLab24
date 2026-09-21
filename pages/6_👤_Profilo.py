@@ -153,57 +153,57 @@ with tab_dati:
 
     st.markdown("### 🎯 I Tuoi Target Attuali e Gestione Macros")
     
-    # Opzioni di controllo avanzato
+    # Motore di bilanciamento attivato tramite Callback (evita l'errore di Streamlit)
+    def update_macros(modificato):
+        preserva = st.session_state.get("preserva_cal", True)
+        lock_p = st.session_state.get("lock_p", False)
+        lock_f = st.session_state.get("lock_f", False)
+        lock_c = st.session_state.get("lock_c", False)
+
+        c = st.session_state.get("t_c", 0.0)
+        p = st.session_state.get("t_p", 0.0)
+        f = st.session_state.get("t_f", 0.0)
+        cal = st.session_state.get("t_cal", 0.0)
+
+        # Se NON preserviamo le calorie, modifichiamo semplicemente il target calorico
+        if not preserva:
+            if modificato in ['c', 'p', 'f']:
+                st.session_state.t_cal = float(round((c * 4) + (p * 4) + (f * 9)))
+            return
+
+        # Se preserviamo le calorie, calcoliamo la differenza
+        cal_actual = (c * 4) + (p * 4) + (f * 9)
+        diff = cal - cal_actual
+        
+        if abs(diff) > 2:
+            # L'app ignora intelligentemente il campo che hai appena modificato a mano
+            can_edit_c = not lock_c and modificato != 'c'
+            can_edit_p = not lock_p and modificato != 'p'
+            can_edit_f = not lock_f and modificato != 'f'
+            
+            editable_count = sum([can_edit_c, can_edit_p, can_edit_f])
+            
+            # Applica e distribuisci la differenza tra i macro sbloccati
+            if editable_count == 0:
+                st.session_state.t_cal = float(round(cal_actual))
+            else:
+                if can_edit_c: st.session_state.t_c = max(0.0, c + (diff / editable_count / 4.0))
+                if can_edit_p: st.session_state.t_p = max(0.0, p + (diff / editable_count / 4.0))
+                if can_edit_f: st.session_state.t_f = max(0.0, f + (diff / editable_count / 9.0))
+
     col_flag1, col_lock1, col_lock2, col_lock3 = st.columns(4)
-    preserva_cal = col_flag1.checkbox("🔒 Preserva Calorie Fisse", value=True, help="Mantiene le calorie costanti ridistribuendo i macro in automatico se modifichi un valore.")
-    lock_p = col_lock1.checkbox("Blocca Proteine", value=False)
-    lock_f = col_lock2.checkbox("Blocca Grassi", value=False)
-    lock_c = col_lock3.checkbox("Blocca Carboidrati", value=False)
+    preserva_cal = col_flag1.checkbox("🔒 Preserva Calorie Fisse", value=True, key="preserva_cal", on_change=update_macros, args=('cal',))
+    lock_p = col_lock1.checkbox("Blocca Proteine", value=False, key="lock_p")
+    lock_f = col_lock2.checkbox("Blocca Grassi", value=False, key="lock_f")
+    lock_c = col_lock3.checkbox("Blocca Carboidrati", value=False, key="lock_c")
 
     tc1, tc2, tc3, tc4 = st.columns(4)
     
-    # Callback per gestire la logica interattiva dei macro e delle calorie
-    def aggiorna_da_calorie():
-        # Se cambiano le calorie e nulla è bloccato, ricalcoliamo i macro in proporzione classica
-        pass
-
-    final_cal = tc1.number_input("Target Calorie (kcal)", key="t_cal", step=50.0)
-    
-    # Calcolo interattivo in base ai flag
-    # Se l'utente modifica i grammi, gestiamo il bilanciamento
-    old_c = st.session_state.t_c
-    old_p = st.session_state.t_p
-    old_f = st.session_state.t_f
-
-    final_c = tc2.number_input("Carboidrati (g)", key="t_c", step=5.0)
-    final_p = tc3.number_input("Proteine (g)", key="t_p", step=5.0)
-    final_f = tc4.number_input("Grassi (g)", key="t_f", step=5.0)
-
-    # Logica di bilanciamento automatica se preserva_cal è attivo
-    if preserva_cal:
-        cal_stimata_da_macro = (final_c * 4) + (final_p * 4) + (final_f * 9)
-        # Se le calorie nei campi differiscono dal target calorico impostato, aggiustiamo il campo non bloccato
-        if abs(cal_stimata_da_macro - final_cal) > 1.0:
-            diff_cal = final_cal - cal_stimata_da_macro
-            # Vediamo chi può assorbire la differenza
-            if not lock_c and lock_p and lock_f:
-                st.session_state.t_c = max(0.0, final_c + (diff_cal / 4.0))
-            elif not lock_p and lock_c and lock_f:
-                st.session_state.t_p = max(0.0, final_p + (diff_cal / 4.0))
-            elif not lock_f and lock_c and lock_p:
-                st.session_state.t_f = max(0.0, final_f + (diff_cal / 9.0))
-            elif not lock_c and not lock_p and lock_f:
-                # Se due sono liberi, distribuiamo su carb e prot (es. metà e metà o proporzionale)
-                st.session_state.t_c = max(0.0, final_c + (diff_cal / 2.0 / 4.0))
-                st.session_state.t_p = max(0.0, final_p + (diff_cal / 2.0 / 4.0))
-            # Aggiorniamo le variabili finali post-ricalcolo
-            final_c = st.session_state.t_c
-            final_p = st.session_state.t_p
-            final_f = st.session_state.t_f
-    else:
-        # Se non preserviamo le calorie, le calorie diventano la somma matematica esatta dei macro inseriti
-        st.session_state.t_cal = float(round((final_c * 4) + (final_p * 4) + (final_f * 9)))
-        final_cal = st.session_state.t_cal
+    # Input collegati direttamente al callback
+    final_cal = tc1.number_input("Target Calorie (kcal)", key="t_cal", step=50.0, on_change=update_macros, args=('cal',))
+    final_c = tc2.number_input("Carboidrati (g)", key="t_c", step=5.0, on_change=update_macros, args=('c',))
+    final_p = tc3.number_input("Proteine (g)", key="t_p", step=5.0, on_change=update_macros, args=('p',))
+    final_f = tc4.number_input("Grassi (g)", key="t_f", step=5.0, on_change=update_macros, args=('f',))
 
     # Calcolo Percentuali e Rapporti su kg di peso corporeo
     tot_cal_macro = (final_c * 4) + (final_p * 4) + (final_f * 9)
