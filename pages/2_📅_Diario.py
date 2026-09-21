@@ -90,10 +90,10 @@ else:
 tgt_cal = tgt_c = tgt_p = tgt_f = 0.0
 df_prof = get_profilo_utente(USER_ID)
 if not df_prof.empty:
-    tgt_cal = float(df_prof.iloc[0].get('tgl_Cal', 0) or 0)
-    tgt_c = float(df_prof.iloc[0].get('tgt_C', 0) or 0)
-    tgt_p = float(df_prof.iloc[0].get('tgt_P', 0) or 0)
-    tgt_f = float(df_prof.iloc[0].get('tgt_F', 0) or 0)
+    tgt_cal = float(df_prof.iloc[0].get('tgt_cal', 0) or 0)
+    tgt_c = float(df_prof.iloc[0].get('tgt_c', 0) or 0)
+    tgt_p = float(df_prof.iloc[0].get('tgt_p', 0) or 0)
+    tgt_f = float(df_prof.iloc[0].get('tgt_f', 0) or 0)
 
 # ==========================================
 # 🗂️ TABS DI NAVIGAZIONE

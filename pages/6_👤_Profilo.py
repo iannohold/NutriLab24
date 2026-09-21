@@ -78,11 +78,18 @@ with tab_dati:
     st.markdown("### 2️⃣ Peso e Composizione Corporea")
     
     c_data, c_peso, c_bmi = st.columns([1, 1, 1.5])
-    data_pesata = c_data.date_input("Data Pesata/Misurazione", pd.to_datetime('today').date())
-    new_peso = c_peso.number_input("Peso (kg)", min_value=30.0, max_value=250.0, value=curr_peso, step=0.5)
     
-    bmi = new_peso / ((new_alt / 100) ** 2) if new_alt > 0 else 0
-    c_bmi.metric("Indice di Massa Corporea (BMI)", f"{bmi:.1f}", help="Il rapporto matematico tra il tuo peso e il quadrato della tua altezza.")
+    with c_data:
+        data_pesata = st.date_input("Data", pd.to_datetime('today').date())
+        
+    with c_peso:
+        new_peso = st.number_input("Peso (kg)", min_value=30.0, max_value=250.0, value=curr_peso, step=0.5)
+        
+    with c_bmi:
+        # Questo <br> abbassa l'IMC per allinearlo ai box di input a fianco
+        st.markdown("<br>", unsafe_allow_html=True)
+        bmi = new_peso / ((new_alt / 100) ** 2) if new_alt > 0 else 0
+        st.markdown(f"⚖️ **IMC: {bmi:.1f}**", help="Indice di Massa Corporea: Rapporto tra il peso e il quadrato dell'altezza")
     
     st.write("")
     cc1, cc2, cc3, cc4 = st.columns(4)
@@ -153,7 +160,6 @@ with tab_dati:
 
     st.markdown("### 🎯 I Tuoi Target Attuali e Gestione Macros")
     
-    # Motore di bilanciamento attivato tramite Callback (evita l'errore di Streamlit)
     def update_macros(modificato):
         preserva = st.session_state.get("preserva_cal", True)
         lock_p = st.session_state.get("lock_p", False)
@@ -165,25 +171,21 @@ with tab_dati:
         f = st.session_state.get("t_f", 0.0)
         cal = st.session_state.get("t_cal", 0.0)
 
-        # Se NON preserviamo le calorie, modifichiamo semplicemente il target calorico
         if not preserva:
             if modificato in ['c', 'p', 'f']:
                 st.session_state.t_cal = float(round((c * 4) + (p * 4) + (f * 9)))
             return
 
-        # Se preserviamo le calorie, calcoliamo la differenza
         cal_actual = (c * 4) + (p * 4) + (f * 9)
         diff = cal - cal_actual
         
         if abs(diff) > 2:
-            # L'app ignora intelligentemente il campo che hai appena modificato a mano
             can_edit_c = not lock_c and modificato != 'c'
             can_edit_p = not lock_p and modificato != 'p'
             can_edit_f = not lock_f and modificato != 'f'
             
             editable_count = sum([can_edit_c, can_edit_p, can_edit_f])
             
-            # Applica e distribuisci la differenza tra i macro sbloccati
             if editable_count == 0:
                 st.session_state.t_cal = float(round(cal_actual))
             else:
@@ -191,19 +193,24 @@ with tab_dati:
                 if can_edit_p: st.session_state.t_p = max(0.0, p + (diff / editable_count / 4.0))
                 if can_edit_f: st.session_state.t_f = max(0.0, f + (diff / editable_count / 9.0))
 
-    col_flag1, col_lock1, col_lock2, col_lock3 = st.columns(4)
-    preserva_cal = col_flag1.checkbox("🔒 Preserva Calorie Fisse", value=True, key="preserva_cal", on_change=update_macros, args=('cal',))
-    lock_p = col_lock1.checkbox("Blocca Proteine", value=False, key="lock_p")
-    lock_f = col_lock2.checkbox("Blocca Grassi", value=False, key="lock_f")
-    lock_c = col_lock3.checkbox("Blocca Carboidrati", value=False, key="lock_c")
-
+    # Creazione delle colonne con flag e input raggruppati per perfetto allineamento verticale
     tc1, tc2, tc3, tc4 = st.columns(4)
     
-    # Input collegati direttamente al callback
-    final_cal = tc1.number_input("Target Calorie (kcal)", key="t_cal", step=50.0, on_change=update_macros, args=('cal',))
-    final_c = tc2.number_input("Carboidrati (g)", key="t_c", step=5.0, on_change=update_macros, args=('c',))
-    final_p = tc3.number_input("Proteine (g)", key="t_p", step=5.0, on_change=update_macros, args=('p',))
-    final_f = tc4.number_input("Grassi (g)", key="t_f", step=5.0, on_change=update_macros, args=('f',))
+    with tc1:
+        preserva_cal = st.checkbox("🔒 Preserva Calorie", value=True, key="preserva_cal", on_change=update_macros, args=('cal',))
+        final_cal = st.number_input("Target Calorie (kcal)", key="t_cal", step=50.0, on_change=update_macros, args=('cal',))
+        
+    with tc2:
+        lock_c = st.checkbox("🔒 Blocca Carboidrati", value=False, key="lock_c")
+        final_c = st.number_input("Carboidrati (g)", key="t_c", step=5.0, on_change=update_macros, args=('c',))
+        
+    with tc3:
+        lock_p = st.checkbox("🔒 Blocca Proteine", value=False, key="lock_p")
+        final_p = st.number_input("Proteine (g)", key="t_p", step=5.0, on_change=update_macros, args=('p',))
+        
+    with tc4:
+        lock_f = st.checkbox("🔒 Blocca Grassi", value=False, key="lock_f")
+        final_f = st.number_input("Grassi (g)", key="t_f", step=5.0, on_change=update_macros, args=('f',))
 
     # Calcolo Percentuali e Rapporti su kg di peso corporeo
     tot_cal_macro = (final_c * 4) + (final_p * 4) + (final_f * 9)
@@ -215,14 +222,8 @@ with tab_dati:
     r_prot = final_p / new_peso if new_peso > 0 else 0
     r_gras = final_f / new_peso if new_peso > 0 else 0
 
-    st.markdown(f"""
-    <div style="background-color: #f0f2f6; padding: 10px; border-radius: 8px; font-size: 14px; margin-bottom: 15px;">
-        <b>📊 Ripartizione Energetica Attuale:</b><br>
-        🍞 Carboidrati: <b>{p_carb:.1f}%</b> ({r_carb:.2f} g/kg) | 
-        🥩 Proteine: <b>{p_prot:.1f}%</b> ({r_prot:.2f} g/kg) | 
-        🥑 Grassi: <b>{p_gras:.1f}%</b> ({r_gras:.2f} g/kg)
-    </div>
-    """, unsafe_allow_html=True)
+    # Riquadro compatto, pulito e nativo
+    st.info(f"📊 **Ripartizione Energetica:** 🍞 C: **{p_carb:.1f}%** ({r_carb:.2f} g/kg)  &nbsp;|&nbsp;  🥩 P: **{p_prot:.1f}%** ({r_prot:.2f} g/kg)  &nbsp;|&nbsp;  🥑 G: **{p_gras:.1f}%** ({r_gras:.2f} g/kg)")
 
     st.write("")
     if st.button(f"💾 Salva Profilo e Registra Misurazione al {data_pesata.strftime('%d/%m/%Y')}", type="primary", use_container_width=True):
