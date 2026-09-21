@@ -7,3 +7,4 @@ openpyxl
 plotly
 SQLAlchemy
 psycopg2-binary
+streamlit-cookies-controller
