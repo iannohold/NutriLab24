@@ -15,7 +15,6 @@ st.set_page_config(page_title="NutriLab24", layout="wide")
 # ==========================================
 # 🔐 CONTROLLO SICUREZZA E NAVIGAZIONE
 # ==========================================
-# 1. Controllo di sicurezza centralizzato
 from components.auth import require_login
 require_login()
 
@@ -81,7 +80,6 @@ def get_status_emoji(val, tgt):
 # ==========================================
 df_diario = get_diario_utente(USER_ID)
 if not df_diario.empty and 'Data' in df_diario.columns:
-    # Blindatura: forza le date a stringa pura YYYY-MM-DD per evitare disallineamenti
     df_diario['Data'] = pd.to_datetime(df_diario['Data'], errors='coerce').dt.strftime('%Y-%m-%d')
     df_diario['Data_DT'] = pd.to_datetime(df_diario['Data'], format='%Y-%m-%d', errors='coerce').dt.date
 else:
@@ -155,12 +153,13 @@ with tab_inserisci:
                         is_pianificato = str(row.get('Stato', 'Consumato')) == 'Pianificato'
                         
                         if is_pianificato:
-                            c_txt.markdown(f"<span style='color: gray;'>⏳ <b>[DA CONFERMARE]</b> {row['Quantita']:.1f} {row['Unita']} di {row['Elemento']} <i>(Peso: {row['Quantita']:.1f}{row['Unita']} | Cal: {row['Calorie']:.0f} | P: {row['Proteine']:.1f}g)</i></span>", unsafe_allow_html=True)
+                            c_txt.markdown(f"<span style='color: gray;'>⏳ <b>[DA CONFERMARE]</b> {row['Quantita']:.1f} {row['Unita']} di {row['Elemento']} <i>(Cal: {row['Calorie']:.0f} | P: {row['Proteine']:.1f}g)</i></span>", unsafe_allow_html=True)
                             with st.container():
                                 cc_spazio, cc_qta, cc_btn = st.columns([0.05, 0.45, 0.50])
-                                nuova_qta = cc_qta.number_input(f"Q.tà finale ({row['Unita']})", value=float(row['Quantita']), step=1.0, key=f"qta_conf_{row['ID']}")
+                                # Etichetta chiara e inequivocabile per la conferma
+                                nuova_qta = cc_qta.number_input(f"Q.tà nel piatto ({row['Unita']})", value=float(row['Quantita']), step=1.0, key=f"qta_conf_{row['ID']}")
                                 cc_btn.write("")
-                                if cc_btn.button("✅ Conferma", key=f"btn_conf_{row['ID']}", type="primary"):
+                                if cc_btn.button("✅ Conferma Pasto", key=f"btn_conf_{row['ID']}", type="primary"):
                                     with st.spinner("Salvataggio..."):
                                         ratio = nuova_qta / float(row['Quantita']) if float(row['Quantita']) > 0 else 0
                                         new_cal = float(row['Calorie']) * ratio
@@ -169,10 +168,10 @@ with tab_inserisci:
                                         new_f = float(row['Grassi']) * ratio
                                         new_sal = float(row.get('Sale', 0.0)) * ratio
                                         
-                                        aggiorna_voce_diario(row['ID'], nuova_qta, new_cal, new_c, new_p, new_f, new_sal, 'Consumato')
+                                        aggiorna_voce_diario(row['ID'], nuova_qta, new_cal, new_c, new_p, new_f, new_sal, 'Consumato', row['Elemento'])
                                         st.rerun()
                         else:
-                            c_txt.write(f"- **{row['Quantita']:.1f} {row['Unita']}** di {row['Elemento']} *(Peso: {row['Quantita']:.1f}{row['Unita']} | Cal: {row['Calorie']:.0f} | C: {row['Carboidrati']:.1f} | P: {row['Proteine']:.1f} | G: {row['Grassi']:.1f} | Sale: {row.get('Sale', 0.0):.2f}g)*")
+                            c_txt.write(f"- **{row['Quantita']:.1f} {row['Unita']}** (nel piatto) di {row['Elemento']} *(Cal: {row['Calorie']:.0f} | C: {row['Carboidrati']:.1f} | P: {row['Proteine']:.1f} | G: {row['Grassi']:.1f} | Sale: {row.get('Sale', 0.0):.2f}g)*")
 
                         if c_mod.button("✏️ Modifica", key=f"mod_{row['ID']}"):
                             st.session_state[f"editing_{row['ID']}"] = True
@@ -183,10 +182,10 @@ with tab_inserisci:
 
                         if st.session_state.get(f"editing_{row['ID']}", False):
                             with st.form(key=f"form_edit_{row['ID']}"):
-                                st.write(f"Modifica la quantità per: **{row['Elemento']}**")
+                                st.write(f"Modifica la quantità nel piatto per: **{row['Elemento']}**")
                                 old_qty = float(row['Quantita'])
                                 
-                                new_qty = st.number_input(f"Nuova Quantità ({row['Unita']})", value=old_qty, min_value=0.0, step=1.0 if row['Unita']=='pz' else 5.0)
+                                new_qty = st.number_input(f"Nuova Q.tà ({row['Unita']})", value=old_qty, min_value=0.0, step=1.0 if row['Unita']=='pz' else 5.0)
                                 
                                 if st.form_submit_button("💾 Salva Nuova Quantità"):
                                     ratio = new_qty / old_qty if old_qty > 0 else 1.0
@@ -221,7 +220,7 @@ with tab_storico:
             with st.expander(f"📅 {d} - {df_g['Calorie'].sum():.0f} kcal"):
                 for _, row in df_g.iterrows():
                     col1, col2 = st.columns([0.85, 0.15])
-                    col1.write(f"- **{row['Quantita']:.1f} {row['Unita']}** di {row['Elemento']} *(Peso: {row['Quantita']:.1f}{row['Unita']} | Cal: {row['Calorie']:.0f} kcal)*")
+                    col1.write(f"- **{row['Quantita']:.1f} {row['Unita']}** (nel piatto) di {row['Elemento']} *(Cal: {row['Calorie']:.0f} kcal)*")
                     if col2.button("✏️ Mod", key=f"mod_stor_{row['ID']}"):
                         st.session_state[f"editing_{row['ID']}"] = True
                     
@@ -229,7 +228,7 @@ with tab_storico:
                         with st.form(key=f"form_edit_stor_{row['ID']}"):
                             st.write(f"Modifica: {row['Elemento']}")
                             old_qty = float(row['Quantita'])
-                            new_qty = st.number_input(f"Quantità ({row['Unita']})", value=old_qty, min_value=0.0)
+                            new_qty = st.number_input(f"Q.tà nel piatto ({row['Unita']})", value=old_qty, min_value=0.0)
                             
                             if st.form_submit_button("Salva"):
                                 ratio = new_qty / old_qty if old_qty > 0 else 1.0

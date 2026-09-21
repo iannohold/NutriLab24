@@ -288,31 +288,42 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
             
             for i, item in enumerate(st.session_state.diario_multi_items):
                 c1, c2, c3 = st.columns([0.6, 0.3, 0.1])
-                new_qty = c2.number_input("Q.tà", min_value=0.0, value=float(item['quantita']), step=1.0 if item['unita'] == 'pz' else 5.0, key=f"edit_multi_{item['id']}", label_visibility="collapsed")
-                if new_qty != item['quantita']: st.session_state.diario_multi_items[i]['quantita'] = new_qty
+                
+                # --- LOGICA INVERSIONE COTTO/CRUDO NEL VASSOIO ---
+                fattore_cottura = (1 + item.get("var_cottura", 0.0) / 100) if item.get("is_cotto") else 1.0
+                peso_mostrato = float(item['quantita']) * fattore_cottura
+                
+                # Il box ora mostra il peso COTTO (se c'è la spunta) o il CRUDO (se non c'è)
+                new_mostrato = c2.number_input("Q.tà nel Piatto", min_value=0.0, value=peso_mostrato, step=1.0 if item['unita'] == 'pz' else 5.0, key=f"edit_multi_{item['id']}", label_visibility="collapsed")
+                
+                # Se l'utente modifica il peso nel vassoio (es. da 120g a 90g cotto), ricalcoliamo il crudo dietro le quinte
+                if abs(new_mostrato - peso_mostrato) > 0.01: 
+                    st.session_state.diario_multi_items[i]['quantita'] = new_mostrato / fattore_cottura if fattore_cottura > 0 else 0
+                    st.rerun()
+
                 if c3.button("❌", key=f"del_multi_{item['id']}"):
                     st.session_state.diario_multi_items = [it for it in st.session_state.diario_multi_items if it['id'] != item['id']]
                     st.rerun()
 
                 cal, p, c, f, fib, sat, sale, _, _, _, _, _ = MACROS_DB[item["nome"]]
-                peso_eff = new_qty * item.get("peso_pz", 0.0) if item["unita"] == "pz" else new_qty
+                # item['quantita'] ora è sempre il crudo corretto e proporzionato
+                peso_eff_crudo = item['quantita'] * item.get("peso_pz", 0.0) if item["unita"] == "pz" else item['quantita']
                 
-                cal_i = (cal / 100) * peso_eff; c_i = (c / 100) * peso_eff; p_i = (p / 100) * peso_eff
-                f_i = (f / 100) * peso_eff; sat_i = (sat / 100) * peso_eff; fib_i = (fib / 100) * peso_eff
-                sale_i = (sale / 100) * peso_eff
+                cal_i = (cal / 100) * peso_eff_crudo; c_i = (c / 100) * peso_eff_crudo; p_i = (p / 100) * peso_eff_crudo
+                f_i = (f / 100) * peso_eff_crudo; sat_i = (sat / 100) * peso_eff_crudo; fib_i = (fib / 100) * peso_eff_crudo
+                sale_i = (sale / 100) * peso_eff_crudo
                 
                 m_cal_tot += cal_i; m_p_tot += p_i; m_c_tot += c_i; m_f_tot += f_i; m_sat_tot += sat_i; m_fib_tot += fib_i; m_sale_tot += sale_i
                 
-                p_cotto_str = ""
                 if item.get("is_cotto"):
-                    p_cotto = peso_eff * (1 + item.get("var_cottura", 0.0)/100)
-                    p_cotto_str = f" (Cotto: {p_cotto:.1f} g)"
+                    p_cotto = peso_eff_crudo * fattore_cottura
                     m_peso_tot += p_cotto
+                    c1.write(f"🔹 **{item['nome']}** (Cotto) *(Equivale a {peso_eff_crudo:.1f}g crudi | Cal: {cal_i:.0f} | C: {c_i:.1f}g | P: {p_i:.1f}g | G: {f_i:.1f}g | Sale: {sale_i:.2f}g)*")
                 else:
-                    m_peso_tot += peso_eff
-                
-                c1.write(f"🔹 **{item['nome']}** {p_cotto_str} *(Peso: {peso_eff:.1f}g | Cal: {cal_i:.0f} | C: {c_i:.1f}g | P: {p_i:.1f}g | G: {f_i:.1f}g | Sale: {sale_i:.2f}g)*")
-                ingredienti_list.append(f"{new_qty:g}{item['unita']} {item['nome']}")
+                    m_peso_tot += peso_eff_crudo
+                    c1.write(f"🔹 **{item['nome']}** *(Peso: {peso_eff_crudo:.1f}g | Cal: {cal_i:.0f} | C: {c_i:.1f}g | P: {p_i:.1f}g | G: {f_i:.1f}g | Sale: {sale_i:.2f}g)*")
+                    
+                ingredienti_list.append(f"{new_mostrato:.1f}{item['unita']} {item['nome']}")
                 
             st.info(f"⚖️ **Report Vassoio:** Peso: **{m_peso_tot:.1f} g** | 🔥 **{m_cal_tot:.0f} kcal** | 🍞 C: **{m_c_tot:.1f}g** | 🥩 P: **{m_p_tot:.1f}g** | 🥑 G: **{m_f_tot:.1f}g** | Sat: **{m_sat_tot:.1f}g** | Fib: **{m_fib_tot:.1f}g** | Sale: **{m_sale_tot:.2f}g**")
             
@@ -387,17 +398,32 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                 else:
                     for item in st.session_state.diario_multi_items:
                         cal, p, c, f, fib, sat, _, _, _, _, _, _ = MACROS_DB[item["nome"]]
-                        peso_eff = item['quantita'] * item.get("peso_pz", 0.0) if item["unita"] == "pz" else item['quantita']
+                        peso_eff_crudo = item['quantita'] * item.get("peso_pz", 0.0) if item["unita"] == "pz" else item['quantita']
                         
-                        p_cotto_str = f" (Cotto)" if item.get("is_cotto") else ""
-                        qty_finale_salvata = item['quantita'] * rt_consumo_vassoio
-                        
+                        # --- MODIFICA SMART: Ricalcolo su Peso Cotto ---
+                        if item.get("is_cotto"):
+                            # Calcoliamo il peso finale cotto
+                            peso_finale_cotto = peso_eff_crudo * (1 + item.get("var_cottura", 0.0) / 100)
+                            
+                            # Registriamo come "Quantita" da mostrare nel diario il peso COTTO
+                            qta_da_salvare = peso_finale_cotto * rt_consumo_vassoio
+                            unita_da_salvare = "g" # Forza grammi per il cotto
+                            
+                            # Integriamo nel nome l'origine a crudo per chiarezza nel diario
+                            elemento_salvato = f"🛒 {item['nome']} (Da crudo: {peso_eff_crudo * rt_consumo_vassoio:.1f}g)"
+                        else:
+                            # Comportamento standard per cibi non cotti
+                            qta_da_salvare = item['quantita'] * rt_consumo_vassoio
+                            unita_da_salvare = item['unita']
+                            elemento_salvato = f"🛒 {item['nome']}"
+                        # -----------------------------------------------
+
                         rows_to_add.append({
                             "id": uuid.uuid4().hex, "data": str(data_selezionata), "pasto": pasto_sel,
-                            "elemento": f"🛒 {item['nome']}{p_cotto_str}", "quantita": qty_finale_salvata, "unita": item['unita'],
-                            "calorie": (cal/100) * peso_eff * rt_consumo_vassoio, "carboidrati": (c/100) * peso_eff * rt_consumo_vassoio, 
-                            "proteine": (p/100) * peso_eff * rt_consumo_vassoio, "grassi": (f/100) * peso_eff * rt_consumo_vassoio, 
-                            "saturi": (sat/100) * peso_eff * rt_consumo_vassoio, "fibre": (fib/100) * peso_eff * rt_consumo_vassoio, 
+                            "elemento": elemento_salvato, "quantita": qta_da_salvare, "unita": unita_da_salvare,
+                            "calorie": (cal/100) * peso_eff_crudo * rt_consumo_vassoio, "carboidrati": (c/100) * peso_eff_crudo * rt_consumo_vassoio, 
+                            "proteine": (p/100) * peso_eff_crudo * rt_consumo_vassoio, "grassi": (f/100) * peso_eff_crudo * rt_consumo_vassoio, 
+                            "saturi": (sat/100) * peso_eff_crudo * rt_consumo_vassoio, "fibre": (fib/100) * peso_eff_crudo * rt_consumo_vassoio, 
                             "user_id": USER_ID, "tgt_cal": tgt_cal, "tgt_c": tgt_c, "tgt_p": tgt_p, "tgt_f": tgt_f
                         })
                 ready_to_add = True
