@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 from components.nav import render_top_nav
-from services.db import get_current_macros_db, elimina_da_cloud, salva_su_cloud
+from services.db import get_current_macros_db, elimina_da_cloud, salva_su_cloud, get_ean_mapping
 
 # 1. Controllo di sicurezza centralizzato
 from components.auth import require_login
@@ -53,17 +53,20 @@ def formatta_nome_prodotto(nome):
         risultato.append(p)
     return " ".join(risultato)
 
-# Callback: Cerca dal web
+# Callback: Cerca dal web con User-Agent protetto e timeout sicuro
 def cerca_e_compila_off():
     query = st.session_state.get("input_ricerca_web", "").strip()
     if not query: return
     
-    headers = {"User-Agent": "NutriLab24/1.0"}
+    headers = {"User-Agent": "NutriLab24 - WebApp/1.0 - Streamlit (vincenzo)"}
     url = f"https://world.openfoodfacts.org/api/v0/product/{query}.json" if query.isdigit() else f"https://it.openfoodfacts.org/cgi/search.pl?search_terms={query}&search_simple=1&action=process&json=1&page_size=1"
     
     try:
-        res = requests.get(url, headers=headers, timeout=5).json()
-        prod = res.get("product", {}) if query.isdigit() else (res.get("products")[0] if res.get("products") else {})
+        res = requests.get(url, headers=headers, timeout=10)
+        res.raise_for_status()
+        data = res.json()
+        
+        prod = data.get("product", {}) if query.isdigit() else (data.get("products")[0] if data.get("products") else {})
         
         if prod:
             n = prod.get("nutriments", {})
@@ -88,8 +91,8 @@ def cerca_e_compila_off():
             st.toast("✅ Prodotto trovato e modulo compilato!", icon="🎯")
         else:
             st.toast("❌ Nessun risultato trovato.", icon="🚫")
-    except:
-        st.toast("❌ Errore di connessione a OpenFoodFacts.", icon="🚫")
+    except Exception as e:
+        st.toast(f"❌ Errore di connessione: {e}", icon="🚫")
 
 # Callback: Carica dal DB locale
 def carica_prodotto_locale():
