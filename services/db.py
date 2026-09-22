@@ -118,9 +118,7 @@ def elimina_da_cloud(nome):
         st.error(f"🚨 ERRORE ELIMINAZIONE MACROS: {ex}")
         return False
 
-@st.cache_data(ttl=3600) 
-import requests
-import streamlit as st
+@st.cache_data(ttl=3600)
 
 def cerca_alimento_web(query):
     query = str(query).strip()
