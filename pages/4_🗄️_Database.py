@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 from components.nav import render_top_nav
-from services.db import get_current_macros_db, elimina_da_cloud, salva_su_cloud, get_ean_mapping
+from services.db import get_current_macros_db, elimina_da_cloud, salva_su_cloud
 
 # 1. Controllo di sicurezza centralizzato
 from components.auth import require_login
