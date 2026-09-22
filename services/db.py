@@ -119,30 +119,42 @@ def elimina_da_cloud(nome):
         return False
 
 @st.cache_data(ttl=3600) 
+import requests
+import streamlit as st
+
 def cerca_alimento_web(query):
     query = str(query).strip()
-    headers = {"User-Agent": "NutriLab24/1.0"}
+    headers = {"User-Agent": "NutriLab24 - WebApp/1.0 - Streamlit (vincenzo)"}
     
     if query.isdigit() and len(query) >= 8:
         url = f"https://world.openfoodfacts.org/api/v0/product/{query}.json"
         try:
-            res = requests.get(url, headers=headers, timeout=5).json()
-            if res.get("status") == 1:
-                n = res.get("product", {}).get("nutriments", {})
-                marca = res.get("product", {}).get("brands", "").split(",")[0].title()
+            res = requests.get(url, headers=headers, timeout=10)
+            res.raise_for_status()  # Blocca e segnala se il server dà errore (es. 500, 503)
+            data = res.json()
+            
+            if data.get("status") == 1:
+                n = data.get("product", {}).get("nutriments", {})
+                marca = data.get("product", {}).get("brands", "").split(",")[0].title()
                 return True, float(n.get("energy-kcal_100g") or 0.0), float(n.get("proteins_100g") or 0.0), float(n.get("carbohydrates_100g") or 0.0), float(n.get("fat_100g") or 0.0), float(n.get("fiber_100g") or 0.0), float(n.get("saturated-fat_100g") or 0.0), float(n.get("salt_100g") or 0.0), 0.0, 0.0, "g", marca, "Prodotto Confezionato"
-        except: pass
+        except Exception as e:
+            st.error(f"⚠️ Dettaglio errore OpenFoodFacts (Codice a barre): {e}")
     else:
         url = f"https://it.openfoodfacts.org/cgi/search.pl?search_terms={query}&search_simple=1&action=process&json=1&page_size=3"
         try:
-            res = requests.get(url, headers=headers, timeout=5).json()
-            if res.get("products") and len(res["products"]) > 0:
-                for prod in res["products"]:
+            res = requests.get(url, headers=headers, timeout=10)
+            res.raise_for_status()  # Blocca e segnala se il server dà errore
+            data = res.json()
+            
+            if data.get("products") and len(data["products"]) > 0:
+                for prod in data["products"]:
                     n = prod.get("nutriments", {})
                     if "energy-kcal_100g" in n or "proteins_100g" in n:
                         marca = prod.get("brands", "").split(",")[0].title()
                         return True, float(n.get("energy-kcal_100g") or 0.0), float(n.get("proteins_100g") or 0.0), float(n.get("carbohydrates_100g") or 0.0), float(n.get("fat_100g") or 0.0), float(n.get("fiber_100g") or 0.0), float(n.get("saturated-fat_100g") or 0.0), float(n.get("salt_100g") or 0.0), 0.0, 0.0, "g", marca, "Prodotto Confezionato"
-        except: pass
+        except Exception as e:
+            st.error(f"⚠️ Dettaglio errore OpenFoodFacts (Ricerca Testuale): {e}")
+            
     return False, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, "g", "", "Materia Prima"
 
 def cerca_locale(nome):
