@@ -1,5 +1,6 @@
 import streamlit as st
 from streamlit_cookies_controller import CookieController
+from components.auth import require_login, get_utente_db
 
 # Configurazione base della pagina (deve essere la prima istruzione)
 st.set_page_config(page_title="NutriLab", page_icon="🧪", layout="wide")
@@ -24,75 +25,13 @@ st.markdown(
 )
 
 # =========================================================
-# 🔐 DATABASE UTENTI LOCALE
+# 🔐 CONTROLLO DI SICUREZZA CENTRALIZZATO (SUPABASE)
 # =========================================================
-UTENTI = {
-    "vins": {"password": "admin!", "nome": "Vincenzo", "is_admin": True},
-    "monella": {"password": "user1!", "nome": "Silvia", "is_admin": False},
-    "matteo": {"password": "matt", "nome": "Utente Ospite", "is_admin": False},
-    "ospite": {"password": "test!", "nome": "Utente Ospite", "is_admin": False}
-}
-
-# =========================================================
-# ⚙️ INIZIALIZZAZIONE STATO DI SESSIONE
-# =========================================================
-if "logged_in" not in st.session_state: 
-    st.session_state.logged_in = False
-if "username" not in st.session_state: 
-    st.session_state.username = ""
-if "is_admin" not in st.session_state: 
-    st.session_state.is_admin = False
-
-# 1. Auto-login tramite Cookie (Dura 30 giorni)
-saved_user = cookie_controller.get('nutrilab_user')
-if not st.session_state.logged_in and saved_user and saved_user in UTENTI:
-    st.session_state.logged_in = True
-    st.session_state.username = saved_user
-    st.session_state.is_admin = UTENTI[saved_user]["is_admin"]
-
-# 2. Auto-login tramite URL
-if not st.session_state.logged_in and "user" in st.query_params:
-    q_user = st.query_params["user"]
-    if q_user in UTENTI:
-        st.session_state.logged_in = True
-        st.session_state.username = q_user
-        st.session_state.is_admin = UTENTI[q_user]["is_admin"]
-        cookie_controller.set('nutrilab_user', q_user, max_age=2592000)
-
-# =========================================================
-# 🚪 SCHERMATA DI LOGIN
-# =========================================================
-if not st.session_state.logged_in:
-    st.markdown("<br><br><h1 style='text-align: center;'>🔐 Accesso a NutriLab</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: gray;'>Accedi per visualizzare le tue ricette e il tuo diario alimentare.</p>", unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col2:
-        with st.form("login_form"):
-            username_input = st.text_input("Username").lower().strip()
-            password_input = st.text_input("Password", type="password")
-            submit_button = st.form_submit_button("Accedi", use_container_width=True)
-            
-            if submit_button:
-                if username_input in UTENTI and UTENTI[username_input]["password"] == password_input:
-                    st.session_state.logged_in = True
-                    st.session_state.username = username_input
-                    st.session_state.is_admin = UTENTI[username_input]["is_admin"]
-                    st.query_params["user"] = username_input 
-                    # Imposta il cookie per 30 giorni
-                    cookie_controller.set('nutrilab_user', username_input, max_age=2592000)
-                    st.success("✅ Accesso effettuato!")
-                    st.rerun()
-                else:
-                    st.error("❌ Username o password errati.")
-    
-    st.markdown("<br><br><div style='text-align: center; color: gray;'><small>⚡ Powered by iannovins</small></div>", unsafe_allow_html=True)
-    st.stop()
+require_login()
 
 # =========================================================
 # 👋 DASHBOARD PRINCIPALE (A LOGIN EFFETTUATO)
 # =========================================================
-from components.auth import get_utente_db
 dati_utente = get_utente_db(st.session_state.username)
 nome_visibile = dati_utente['nome'] if dati_utente else st.session_state.username
 
