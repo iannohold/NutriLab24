@@ -6,8 +6,12 @@ import io
 from sqlalchemy import text
 
 from services.db import (
-    get_conn, ADMIN_ID, get_current_macros_db, 
-    get_macros_and_match, salva_su_cloud, get_ricette_utente_e_community
+    get_conn, 
+    ADMIN_ID, 
+    get_current_macros_db, 
+    get_macros_and_match, 
+    salva_su_cloud, 
+    get_ricette_utente_e_community
 )
 
 ORARI_FINE_PASTO = {
