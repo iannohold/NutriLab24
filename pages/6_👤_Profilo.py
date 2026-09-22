@@ -3,15 +3,19 @@ import pandas as pd
 import plotly.express as px
 from components.nav import render_top_nav
 from services.db import get_profilo_utente, salva_profilo_utente, get_storico_profilo
+from components.auth import require_login, get_utente_db
 
 # 1. Controllo di sicurezza centralizzato
-from components.auth import require_login
 require_login()
 
 st.set_page_config(page_title="NutriLab24 - Profilo", layout="wide")
 render_top_nav("Profilo e Obiettivi")
 
 USER_ID = st.session_state.username
+
+# Recupero dati account (Nome ed Email)
+utente_dati = get_utente_db(USER_ID)
+nome_utente = utente_dati["nome"] if utente_dati else "Utente"
 
 st.title("👤 Profilo, Misure e Obiettivi")
 st.markdown("#### *Calcola il tuo fabbisogno, gestisci i target con logica avanzata e monitora i progressi.* 📈")
@@ -21,7 +25,7 @@ st.write("")
 df_prof = get_profilo_utente(USER_ID)
 curr_peso = 70.0; curr_alt = 170; curr_eta = 30; curr_sesso = "Uomo"; curr_att = "Sedentario"
 curr_ob = "Mantenimento"
-curr_cal = 2000.0; curr_c = 200.0; curr_p = 150.0; curr_f = 60.0
+curr_cal = 2000.0; curr_c = 200.0; curr_p = 150.0; curr_f = 60.0; curr_sale = 5.0; curr_t_acqua = 2500.0
 curr_collo = curr_petto = curr_vita = curr_fianchi = curr_braccio = curr_coscia = curr_polpaccio = 0.0
 curr_mgrassa = curr_mmusc = curr_mossea = curr_acqua = 0.0
 
@@ -38,6 +42,8 @@ if not df_prof.empty:
     curr_c = float(r.get('tgt_c', 200.0))
     curr_p = float(r.get('tgt_p', 150.0))
     curr_f = float(r.get('tgt_f', 60.0))
+    curr_sale = float(r.get('tgt_sale', 5.0))
+    curr_t_acqua = float(r.get('tgt_acqua', 2500.0))
     
     curr_collo = float(r.get('circ_collo', 0.0))
     curr_petto = float(r.get('circ_petto', 0.0))
@@ -57,14 +63,18 @@ if "t_cal" not in st.session_state: st.session_state.t_cal = curr_cal
 if "t_c" not in st.session_state: st.session_state.t_c = curr_c
 if "t_p" not in st.session_state: st.session_state.t_p = curr_p
 if "t_f" not in st.session_state: st.session_state.t_f = curr_f
+if "t_sale" not in st.session_state: st.session_state.t_sale = curr_sale
+if "t_acqua" not in st.session_state: st.session_state.t_acqua = curr_t_acqua
 
 tab_dati, tab_storico = st.tabs(["📝 Dati e Calcolatore Macros", "📊 Andamento e Storico"])
 
 with tab_dati:
     # ---------------------------------------------------------------------------------
-    # SEZIONE 1: Dati Fissi
+    # SEZIONE 1: Dati Account e Biometria Base
     # ---------------------------------------------------------------------------------
-    st.markdown("### 1️⃣ Dati Biometrici Base")
+    st.markdown("### 1️⃣ Dati Account e Biometria Base")
+    st.info(f"👤 **Nome Registrato:** {nome_utente} &nbsp;|&nbsp; 📧 **Account Email:** {USER_ID}")
+    
     c_eta, c_alt, c_ses = st.columns(3)
     new_eta = c_eta.number_input("Età", min_value=10, max_value=120, value=curr_eta, step=1)
     new_alt = c_alt.number_input("Altezza (cm)", min_value=100, max_value=250, value=curr_alt, step=1)
@@ -86,7 +96,6 @@ with tab_dati:
         new_peso = st.number_input("Peso (kg)", min_value=30.0, max_value=250.0, value=curr_peso, step=0.5)
         
     with c_bmi:
-        # Questo <br> abbassa l'IMC per allinearlo ai box di input a fianco
         st.markdown("<br>", unsafe_allow_html=True)
         bmi = new_peso / ((new_alt / 100) ** 2) if new_alt > 0 else 0
         st.markdown(f"⚖️ **IMC: {bmi:.1f}**", help="Indice di Massa Corporea: Rapporto tra il peso e il quadrato dell'altezza")
@@ -147,14 +156,18 @@ with tab_dati:
     sugg_p = new_peso * (2.2 if new_ob in ["Definizione", "Ricomposizione Corporea", "Dimagrimento"] else 2.0)
     sugg_f = (sugg_cal * 0.25) / 9.0
     sugg_c = max(0.0, (sugg_cal - (sugg_p * 4) - (sugg_f * 9)) / 4.0)
+    
+    # Calcolo suggerito acqua basato sul peso (35 ml/kg)
+    sugg_acqua = new_peso * 35.0
 
-    st.info(f"💡 **Fabbisogno Suggerito (Mifflin-St Jeor):** 🔥 **{sugg_cal:.0f} kcal** | 🍞 C: **{sugg_c:.0f}g** | 🥩 P: **{sugg_p:.0f}g** | 🥑 G: **{sugg_f:.0f}g**")
+    st.info(f"💡 **Fabbisogno Suggerito (Mifflin-St Jeor):** 🔥 **{sugg_cal:.0f} kcal** | 🍞 C: **{sugg_c:.0f}g** | 🥩 P: **{sugg_p:.0f}g** | 🥑 G: **{sugg_f:.0f}g** | 💧 Acqua: **{sugg_acqua:.0f} ml**")
     
     def applica_suggeriti():
         st.session_state.t_cal = float(round(sugg_cal))
         st.session_state.t_c = float(round(sugg_c))
         st.session_state.t_p = float(round(sugg_p))
         st.session_state.t_f = float(round(sugg_f))
+        st.session_state.t_acqua = float(round(sugg_acqua))
         
     st.button("🪄 Applica Valori Suggeriti", on_click=applica_suggeriti, use_container_width=True)
 
@@ -193,37 +206,39 @@ with tab_dati:
                 if can_edit_p: st.session_state.t_p = max(0.0, p + (diff / editable_count / 4.0))
                 if can_edit_f: st.session_state.t_f = max(0.0, f + (diff / editable_count / 9.0))
 
-    # Creazione delle colonne con flag e input raggruppati per perfetto allineamento verticale
     tc1, tc2, tc3, tc4 = st.columns(4)
-    
     with tc1:
         preserva_cal = st.checkbox("🔒 Preserva Calorie", value=True, key="preserva_cal", on_change=update_macros, args=('cal',))
         final_cal = st.number_input("Target Calorie (kcal)", key="t_cal", step=50.0, on_change=update_macros, args=('cal',))
-        
     with tc2:
         lock_c = st.checkbox("🔒 Blocca Carboidrati", value=False, key="lock_c")
         final_c = st.number_input("Carboidrati (g)", key="t_c", step=5.0, on_change=update_macros, args=('c',))
-        
     with tc3:
         lock_p = st.checkbox("🔒 Blocca Proteine", value=False, key="lock_p")
         final_p = st.number_input("Proteine (g)", key="t_p", step=5.0, on_change=update_macros, args=('p',))
-        
     with tc4:
         lock_f = st.checkbox("🔒 Blocca Grassi", value=False, key="lock_f")
         final_f = st.number_input("Grassi (g)", key="t_f", step=5.0, on_change=update_macros, args=('f',))
 
-    # Calcolo Percentuali e Rapporti su kg di peso corporeo
     tot_cal_macro = (final_c * 4) + (final_p * 4) + (final_f * 9)
     p_carb = (final_c * 4 / tot_cal_macro * 100) if tot_cal_macro > 0 else 0
     p_prot = (final_p * 4 / tot_cal_macro * 100) if tot_cal_macro > 0 else 0
     p_gras = (final_f * 9 / tot_cal_macro * 100) if tot_cal_macro > 0 else 0
-
     r_carb = final_c / new_peso if new_peso > 0 else 0
     r_prot = final_p / new_peso if new_peso > 0 else 0
     r_gras = final_f / new_peso if new_peso > 0 else 0
 
-    # Riquadro compatto, pulito e nativo
     st.info(f"📊 **Ripartizione Energetica:** 🍞 C: **{p_carb:.1f}%** ({r_carb:.2f} g/kg)  &nbsp;|&nbsp;  🥩 P: **{p_prot:.1f}%** ({r_prot:.2f} g/kg)  &nbsp;|&nbsp;  🥑 G: **{p_gras:.1f}%** ({r_gras:.2f} g/kg)")
+
+    # ---------------------------------------------------------------------------------
+    # SEZIONE: Micronutrienti e Idratazione
+    # ---------------------------------------------------------------------------------
+    st.markdown("#### 🧂 Target Micronutrienti e Idratazione")
+    c_sale, c_acqua = st.columns(2)
+    with c_sale:
+        final_sale = st.number_input("Target Sale (g)", min_value=0.0, max_value=20.0, value=st.session_state.get("t_sale", 5.0), step=0.5, key="t_sale", help="L'OMS raccomanda un consumo inferiore a 5g al giorno.")
+    with c_acqua:
+        final_acqua = st.number_input("Target Acqua (ml)", min_value=0.0, max_value=8000.0, value=st.session_state.get("t_acqua", 2500.0), step=100.0, key="t_acqua", help="Calcolato stimando circa 35 ml per kg di peso corporeo.")
 
     st.write("")
     if st.button(f"💾 Salva Profilo e Registra Misurazione al {data_pesata.strftime('%d/%m/%Y')}", type="primary", use_container_width=True):
@@ -231,7 +246,7 @@ with tab_dati:
             salvataggio_att = new_att.split(" (")[0]
             salva_profilo_utente(
                 USER_ID, data_pesata, new_peso, new_alt, new_eta, new_sesso, salvataggio_att, 
-                final_cal, final_c, final_p, final_f, new_ob, 
+                final_cal, final_c, final_p, final_f, final_sale, final_acqua, new_ob, 
                 new_collo, new_petto, new_vita, new_fianchi, new_braccio, new_coscia, new_polpaccio,
                 new_mgrassa, new_mmusc, new_mossea, new_acqua
             )
@@ -283,7 +298,7 @@ with tab_storico:
             rename_dict = {
                 'data': 'Data', 'obiettivo': 'Obiettivo', 'peso': 'Peso',
                 'massa_grassa': 'Massa Grassa %', 'massa_muscolare': 'Massa Musc (kg)', 'massa_ossea': 'Ossea (kg)', 'acqua_corporea': 'Acqua %',
-                'tgt_cal': 'Target Kcal', 'tgt_c': 'Carb (g)', 'tgt_p': 'Prot (g)', 'tgt_f': 'Gras (g)',
+                'tgt_cal': 'Target Kcal', 'tgt_c': 'Carb (g)', 'tgt_p': 'Prot (g)', 'tgt_f': 'Gras (g)', 'tgt_sale': 'Sale (g)', 'tgt_acqua': 'Acqua (ml)',
                 'circ_collo': 'Collo', 'circ_petto': 'Petto', 'circ_vita': 'Vita', 
                 'circ_fianchi': 'Fianchi', 'circ_braccio': 'Braccio', 'circ_coscia': 'Coscia', 'circ_polpaccio': 'Polpaccio'
             }
@@ -291,7 +306,7 @@ with tab_storico:
             
             st.dataframe(
                 df_storico_view.style.format({
-                    "Peso": "{:.1f} kg", "Target Kcal": "{:.0f}", "Carb (g)": "{:.0f}", "Prot (g)": "{:.0f}", "Gras (g)": "{:.0f}",
+                    "Peso": "{:.1f} kg", "Target Kcal": "{:.0f}", "Carb (g)": "{:.0f}", "Prot (g)": "{:.0f}", "Gras (g)": "{:.0f}", "Sale (g)": "{:.1f}", "Acqua (ml)": "{:.0f}",
                     "Massa Grassa %": "{:.1f}%", "Massa Musc (kg)": "{:.1f} kg", "Ossea (kg)": "{:.1f} kg", "Acqua %": "{:.1f}%",
                     "Collo": "{:.1f}", "Petto": "{:.1f}", "Vita": "{:.1f}", "Fianchi": "{:.1f}", "Braccio": "{:.1f}", "Coscia": "{:.1f}", "Polpaccio": "{:.1f}"
                 }), 

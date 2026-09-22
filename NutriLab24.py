@@ -92,7 +92,11 @@ if not st.session_state.logged_in:
 # =========================================================
 # 👋 DASHBOARD PRINCIPALE (A LOGIN EFFETTUATO)
 # =========================================================
-st.title(f"👋 Benvenuto, {UTENTI[st.session_state.username]['nome']}!")
+from components.auth import get_utente_db
+dati_utente = get_utente_db(st.session_state.username)
+nome_visibile = dati_utente['nome'] if dati_utente else st.session_state.username
+
+st.title(f"👋 Benvenuto, {nome_visibile}!")
 st.markdown("#### *Seleziona un'area di lavoro per iniziare:*")
 st.write("")
 

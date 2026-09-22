@@ -10,7 +10,7 @@ from sqlalchemy import text
 # ==========================================
 # ⚙️ COSTANTI GLOBALI
 # ==========================================
-ADMIN_ID = "vins"
+ADMIN_ID = "iannovins@gmail.com"
 
 RUOLI_LIST = ["Impasto", "Farcitura", "Topping", "Salsa", "Decorazione", "Altro"]
 CATEGORIE_LIST = ["☕ Colazione", "🍰 Dessert", "🍝 Primo", "🥩 Secondo", "🍲 Piatto unico", "🥪 Spuntino", "💪 Post work-out", "🔹 Altro"]
@@ -511,7 +511,7 @@ def get_profilo_utente(user_id):
     conn = get_conn()
     try:
         query = """
-            SELECT user_id, peso, altezza, eta, sesso, attivita, tgt_cal, tgt_c, tgt_p, tgt_f,
+            SELECT user_id, peso, altezza, eta, sesso, attivita, tgt_cal, tgt_c, tgt_p, tgt_f, tgt_sale, tgt_acqua,
                    obiettivo, circ_collo, circ_petto, circ_vita, circ_fianchi, circ_braccio, circ_coscia, circ_polpaccio,
                    massa_grassa, massa_muscolare, massa_ossea, acqua_corporea 
             FROM profilo WHERE LOWER(user_id) = LOWER(:uid)
@@ -521,45 +521,45 @@ def get_profilo_utente(user_id):
         return df
     except: return pd.DataFrame()
 
-def salva_profilo_utente(user_id, data_pesata, peso, altezza, eta, sesso, attivita, tgt_cal, tgt_c, tgt_p, tgt_f, 
+def salva_profilo_utente(user_id, data_pesata, peso, altezza, eta, sesso, attivita, tgt_cal, tgt_c, tgt_p, tgt_f, tgt_sale, tgt_acqua,
                          obiettivo, c_col, c_pet, c_vit, c_fia, c_bra, c_cos, c_pol, m_grassa, m_musc, m_ossea, acqua):
     conn = get_conn()
     try:
         with conn.engine.begin() as e:
             query_prof = text("""
-                INSERT INTO profilo (user_id, peso, altezza, eta, sesso, attivita, tgt_cal, tgt_c, tgt_p, tgt_f, 
+                INSERT INTO profilo (user_id, peso, altezza, eta, sesso, attivita, tgt_cal, tgt_c, tgt_p, tgt_f, tgt_sale, tgt_acqua,
                                      obiettivo, circ_collo, circ_petto, circ_vita, circ_fianchi, circ_braccio, circ_coscia, circ_polpaccio,
                                      massa_grassa, massa_muscolare, massa_ossea, acqua_corporea) 
-                VALUES (:uid, :peso, :altezza, :eta, :sesso, :attivita, :tgt_cal, :tgt_c, :tgt_p, :tgt_f, 
+                VALUES (:uid, :peso, :altezza, :eta, :sesso, :attivita, :tgt_cal, :tgt_c, :tgt_p, :tgt_f, :tgt_sale, :tgt_acqua,
                         :ob, :c_col, :c_pet, :c_vit, :c_fia, :c_bra, :c_cos, :c_pol, :m_gra, :m_mus, :m_oss, :acq) 
                 ON CONFLICT (user_id) 
                 DO UPDATE SET peso=EXCLUDED.peso, altezza=EXCLUDED.altezza, eta=EXCLUDED.eta, sesso=EXCLUDED.sesso, attivita=EXCLUDED.attivita, 
-                              tgt_cal=EXCLUDED.tgt_cal, tgt_c=EXCLUDED.tgt_c, tgt_p=EXCLUDED.tgt_p, tgt_f=EXCLUDED.tgt_f, obiettivo=EXCLUDED.obiettivo, 
-                              circ_collo=EXCLUDED.circ_collo, circ_petto=EXCLUDED.circ_petto, circ_vita=EXCLUDED.circ_vita, 
+                              tgt_cal=EXCLUDED.tgt_cal, tgt_c=EXCLUDED.tgt_c, tgt_p=EXCLUDED.tgt_p, tgt_f=EXCLUDED.tgt_f, tgt_sale=EXCLUDED.tgt_sale, tgt_acqua=EXCLUDED.tgt_acqua,
+                              obiettivo=EXCLUDED.obiettivo, circ_collo=EXCLUDED.circ_collo, circ_petto=EXCLUDED.circ_petto, circ_vita=EXCLUDED.circ_vita, 
                               circ_fianchi=EXCLUDED.circ_fianchi, circ_braccio=EXCLUDED.circ_braccio, circ_coscia=EXCLUDED.circ_coscia, circ_polpaccio=EXCLUDED.circ_polpaccio,
                               massa_grassa=EXCLUDED.massa_grassa, massa_muscolare=EXCLUDED.massa_muscolare, massa_ossea=EXCLUDED.massa_ossea, acqua_corporea=EXCLUDED.acqua_corporea
             """)
             e.execute(query_prof, {
                 "uid": user_id, "peso": peso, "altezza": altezza, "eta": eta, "sesso": sesso, "attivita": attivita, 
-                "tgt_cal": tgt_cal, "tgt_c": tgt_c, "tgt_p": tgt_p, "tgt_f": tgt_f, "ob": obiettivo,
+                "tgt_cal": tgt_cal, "tgt_c": tgt_c, "tgt_p": tgt_p, "tgt_f": tgt_f, "tgt_sale": tgt_sale, "tgt_acqua": tgt_acqua, "ob": obiettivo,
                 "c_col": c_col, "c_pet": c_pet, "c_vit": c_vit, "c_fia": c_fia, "c_bra": c_bra, "c_cos": c_cos, "c_pol": c_pol,
                 "m_gra": m_grassa, "m_mus": m_musc, "m_oss": m_ossea, "acq": acqua
             })
             
             query_storico = text("""
-                INSERT INTO storico_profilo (user_id, data, peso, tgt_cal, tgt_c, tgt_p, tgt_f, 
+                INSERT INTO storico_profilo (user_id, data, peso, tgt_cal, tgt_c, tgt_p, tgt_f, tgt_sale, tgt_acqua,
                                              obiettivo, circ_collo, circ_petto, circ_vita, circ_fianchi, circ_braccio, circ_coscia, circ_polpaccio,
                                              massa_grassa, massa_muscolare, massa_ossea, acqua_corporea)
-                VALUES (:uid, :data, :peso, :tgt_cal, :tgt_c, :tgt_p, :tgt_f, 
+                VALUES (:uid, :data, :peso, :tgt_cal, :tgt_c, :tgt_p, :tgt_f, :tgt_sale, :tgt_acqua,
                         :ob, :c_col, :c_pet, :c_vit, :c_fia, :c_bra, :c_cos, :c_pol, :m_gra, :m_mus, :m_oss, :acq)
                 ON CONFLICT (user_id, data) 
-                DO UPDATE SET peso=EXCLUDED.peso, tgt_cal=EXCLUDED.tgt_cal, tgt_c=EXCLUDED.tgt_c, tgt_p=EXCLUDED.tgt_p, tgt_f=EXCLUDED.tgt_f, 
+                DO UPDATE SET peso=EXCLUDED.peso, tgt_cal=EXCLUDED.tgt_cal, tgt_c=EXCLUDED.tgt_c, tgt_p=EXCLUDED.tgt_p, tgt_f=EXCLUDED.tgt_f, tgt_sale=EXCLUDED.tgt_sale, tgt_acqua=EXCLUDED.tgt_acqua,
                               obiettivo=EXCLUDED.obiettivo, circ_collo=EXCLUDED.circ_collo, circ_petto=EXCLUDED.circ_petto, circ_vita=EXCLUDED.circ_vita, 
                               circ_fianchi=EXCLUDED.circ_fianchi, circ_braccio=EXCLUDED.circ_braccio, circ_coscia=EXCLUDED.circ_coscia, circ_polpaccio=EXCLUDED.circ_polpaccio,
                               massa_grassa=EXCLUDED.massa_grassa, massa_muscolare=EXCLUDED.massa_muscolare, massa_ossea=EXCLUDED.massa_ossea, acqua_corporea=EXCLUDED.acqua_corporea
             """)
             e.execute(query_storico, {
-                "uid": user_id, "data": str(data_pesata), "peso": peso, "tgt_cal": tgt_cal, "tgt_c": tgt_c, "tgt_p": tgt_p, "tgt_f": tgt_f,
+                "uid": user_id, "data": str(data_pesata), "peso": peso, "tgt_cal": tgt_cal, "tgt_c": tgt_c, "tgt_p": tgt_p, "tgt_f": tgt_f, "tgt_sale": tgt_sale, "tgt_acqua": tgt_acqua,
                 "ob": obiettivo, "c_col": c_col, "c_pet": c_pet, "c_vit": c_vit, "c_fia": c_fia, "c_bra": c_bra, "c_cos": c_cos, "c_pol": c_pol,
                 "m_gra": m_grassa, "m_mus": m_musc, "m_oss": m_ossea, "acq": acqua
             })
@@ -573,7 +573,7 @@ def get_storico_profilo(user_id):
     conn = get_conn()
     try:
         query = """
-            SELECT data, peso, tgt_cal, tgt_c, tgt_p, tgt_f, obiettivo, 
+            SELECT data, peso, tgt_cal, tgt_c, tgt_p, tgt_f, tgt_sale, tgt_acqua, obiettivo, 
                    circ_collo, circ_petto, circ_vita, circ_fianchi, circ_braccio, circ_coscia, circ_polpaccio,
                    massa_grassa, massa_muscolare, massa_ossea, acqua_corporea
             FROM storico_profilo WHERE LOWER(user_id) = LOWER(:uid) ORDER BY data ASC

@@ -85,13 +85,14 @@ if not df_diario.empty and 'Data' in df_diario.columns:
 else:
     df_diario['Data_DT'] = pd.Series(dtype='object')
 
-tgt_cal = tgt_c = tgt_p = tgt_f = 0.0
+tgt_cal = tgt_c = tgt_p = tgt_f = tgt_sale = 0.0
 df_prof = get_profilo_utente(USER_ID)
 if not df_prof.empty:
     tgt_cal = float(df_prof.iloc[0].get('tgt_cal', 0) or 0)
     tgt_c = float(df_prof.iloc[0].get('tgt_c', 0) or 0)
     tgt_p = float(df_prof.iloc[0].get('tgt_p', 0) or 0)
     tgt_f = float(df_prof.iloc[0].get('tgt_f', 0) or 0)
+    tgt_sale = float(df_prof.iloc[0].get('tgt_sale', 0) or 0)
 
 # ==========================================
 # 🗂️ TABS DI NAVIGAZIONE
@@ -124,7 +125,12 @@ with tab_inserisci:
             render_stacked_prog(cp2, "🍞 Carb", t_c, p_c, tgt_c, "g")
             render_stacked_prog(cp3, "🥩 Prot", t_p, p_p, tgt_p, "g")
             render_stacked_prog(cp4, "🥑 Gras", t_f, p_f, tgt_f, "g")
-            cp5.metric("🧂 Sale", f"{t_sale:.2f} ({t_sale+p_sale:.2f}) g")
+            
+            if tgt_sale > 0:
+                render_stacked_prog(cp5, "🧂 Sale", t_sale, p_sale, tgt_sale, "g")
+            else:
+                cp5.metric("🧂 Sale", f"{t_sale:.2f} ({t_sale+p_sale:.2f}) g")
+                
             st.write("")
         else:
             cm1, cm2, cm3, cm4, cm5 = st.columns(5)
@@ -302,7 +308,12 @@ with tab_report:
                 render_stacked_prog(c_r2, "🍞 Carb Medi", m_c_c, m_c_p, tgt_c, "g")
                 render_stacked_prog(c_r3, "🥩 Prot Medie", m_p_c, m_p_p, tgt_p, "g")
                 render_stacked_prog(c_r4, "🥑 Gras Medi", m_f_c, m_f_p, tgt_f, "g")
-                c_r5.metric("🧂 Sale Medio", f"{m_sale_c:.2f} g")
+                
+                if tgt_sale > 0:
+                    render_stacked_prog(c_r5, "🧂 Sale Medio", m_sale_c, m_sale_p, tgt_sale, "g")
+                else:
+                    c_r5.metric("🧂 Sale Medio", f"{m_sale_c:.2f} g")
+                    
                 st.write("")
             else:
                 c_r1, c_r2, c_r3, c_r4, c_r5 = st.columns(5)
