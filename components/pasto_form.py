@@ -314,23 +314,36 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                 ready_to_add = True
 
     # =========================================================
+    # 📚 # =========================================================
     # 📚 FLUSSO 2: RICETTE (Aggiunge automaticamente " - Ricetta")
     # =========================================================
     elif tipo_inserimento_diario == "📚 Ricette":
         df_ricette_cloud = get_ricette_utente_e_community(USER_ID, ADMIN_ID)
         df_mie = df_ricette_cloud[df_ricette_cloud['User_ID'] == USER_ID]
-        ricette_list = df_mie['Nome Ricetta'].dropna().tolist() if not df_mie.empty else []
+        
+        # 🔴 Creiamo una mappa sicura per evitare duplicati come "Pippo - Ricetta - Ricetta"
+        opzioni_ricette = []
+        mappa_ricette = {}
+        if not df_mie.empty:
+            for nome_db in df_mie['Nome Ricetta'].dropna().tolist():
+                # Aggiunge il suffisso SOLO se non è già presente
+                nome_ui = f"{nome_db} - Ricetta" if not nome_db.endswith(" - Ricetta") else nome_db
+                opzioni_ricette.append(nome_ui)
+                mappa_ricette[nome_ui] = nome_db
+        opzioni_ricette.sort()
             
-        ric_scelta = st.selectbox(
+        ric_scelta_ui = st.selectbox(
             "Cerca la ricetta nel tuo archivio:", 
-            ricette_list, 
+            opzioni_ricette, 
             index=None, 
             placeholder="Digita per cercare una ricetta...", 
             key=f"ric_scelta_{data_selezionata}"
         )
         
-        if ric_scelta:
-            json_str = df_mie[df_mie['Nome Ricetta'] == ric_scelta]['Dati JSON'].iloc[0]
+        if ric_scelta_ui:
+            # 🔴 Recupera il nome originale esatto dal database usando la mappa
+            ric_scelta_db = mappa_ricette[ric_scelta_ui]
+            json_str = df_mie[df_mie['Nome Ricetta'] == ric_scelta_db]['Dati JSON'].iloc[0]
             df_r = pd.read_json(io.StringIO(json_str))
             
             st.markdown("### 1️⃣ La preparazione di oggi")
