@@ -261,21 +261,37 @@ def process_ingredient_list(lines):
 
 def ricalcola_ingrediente(ing_id):
     if "ingredients" not in st.session_state: return
+    
+    # 🔴 PRENDIAMO IL DB AGGIORNATO PER I CONTROLLI DI EMERGENZA
+    db_corrente = get_current_macros_db()
+    
     for ing in st.session_state.ingredients:
         if ing['id'] == ing_id:
             ing['nome'] = st.session_state.get(f"n_{ing_id}", ing['nome'])
-            ing['quantita'] = st.session_state.get(f"q_{ing_id}", ing['quantita'])
+            ing['quantita'] = safe_fl(st.session_state.get(f"q_{ing_id}", ing['quantita']), ing['quantita'])
             ing['unita'] = st.session_state.get(f"u_{ing_id}", ing['unita'])
             ing['ruolo'] = st.session_state.get(f"ruolo_{ing_id}", ing.get('ruolo', 'Impasto'))
-            if ing['unita'] == 'pz': ing['peso_pz'] = st.session_state.get(f"pw_{ing_id}", 0.0)
+            
+            val_pw = safe_fl(st.session_state.get(f"pw_{ing_id}", ing.get('peso_pz', 0.0)), ing.get('peso_pz', 0.0))
+            
+            # 🔴 HEALING AUTOMATICO: Se l'unità è 'pz' e il peso risulta 0
+            # (bloccato da una vecchia bozza json o cache), lo forza dal DB!
+            if ing['unita'] == 'pz' and val_pw == 0.0:
+                nome_ricerca = ing.get('matched_name') or ing['nome']
+                if nome_ricerca in db_corrente:
+                    # Indice 8 corrisponde al peso_pz nel dizionario
+                    val_pw = safe_fl(db_corrente[nome_ricerca][8], 0.0)
+                    
+            ing['peso_pz'] = val_pw
             ing['peso'] = ing['quantita'] * ing['peso_pz'] if ing['unita'] == 'pz' else ing['quantita']
-            ing['cal_100'] = st.session_state.get(f"cal2_{ing_id}", ing['cal_100'])
-            ing['prot_100'] = st.session_state.get(f"p2_{ing_id}", ing['prot_100'])
-            ing['carb_100'] = st.session_state.get(f"c2_{ing_id}", ing['carb_100'])
-            ing['fat_100'] = st.session_state.get(f"f2_{ing_id}", ing['fat_100'])
-            ing['sat_100'] = st.session_state.get(f"sat2_{ing_id}", ing.get('sat_100', 0.0))
-            ing['fib_100'] = st.session_state.get(f"fib2_{ing_id}", ing.get('fib_100', 0.0))
-            ing['sale_100'] = st.session_state.get(f"sale2_{ing_id}", ing.get('sale_100', 0.0))
+            
+            ing['cal_100'] = safe_fl(st.session_state.get(f"cal2_{ing_id}", ing.get('cal_100', 0.0)), ing.get('cal_100', 0.0))
+            ing['prot_100'] = safe_fl(st.session_state.get(f"p2_{ing_id}", ing.get('prot_100', 0.0)), ing.get('prot_100', 0.0))
+            ing['carb_100'] = safe_fl(st.session_state.get(f"c2_{ing_id}", ing.get('carb_100', 0.0)), ing.get('carb_100', 0.0))
+            ing['fat_100'] = safe_fl(st.session_state.get(f"f2_{ing_id}", ing.get('fat_100', 0.0)), ing.get('fat_100', 0.0))
+            ing['sat_100'] = safe_fl(st.session_state.get(f"sat2_{ing_id}", ing.get('sat_100', 0.0)), ing.get('sat_100', 0.0))
+            ing['fib_100'] = safe_fl(st.session_state.get(f"fib2_{ing_id}", ing.get('fib_100', 0.0)), ing.get('fib_100', 0.0))
+            ing['sale_100'] = safe_fl(st.session_state.get(f"sale2_{ing_id}", ing.get('sale_100', 0.0)), ing.get('sale_100', 0.0))
             break
     salva_bozza_locale()
 
