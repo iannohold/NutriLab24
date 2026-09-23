@@ -75,13 +75,13 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
     if "diario_multi_items" not in st.session_state: st.session_state.diario_multi_items = []
     if "temp_recipe_diario" not in st.session_state: st.session_state.temp_recipe_diario = []
 
-    # =========================================================
+    ## =========================================================
     # LOGICA DI FILTRAGGIO E MAPPING AVANZATO (Marca in Evidenza)
     # =========================================================
     raw_tipologie = set([v[11] for v in MACROS_DB.values() if len(v)>11 and v[11]])
     if "Ricetta personale" in raw_tipologie:
         raw_tipologie.remove("Ricetta personale")
-        raw_tipologie.add("Prodotto Home Made")
+        raw_tipologie.add("Prodotto Nutrilab") # 🔴 Sostituito qui!
     tipologie_uniche = ["Tutte"] + sorted(list(raw_tipologie))
     marche_uniche = ["Tutte"] + sorted(list(set([v[10] for v in MACROS_DB.values() if len(v)>10 and v[10]])))
 
@@ -90,7 +90,7 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
         mappa = {}
         for k, v in MACROS_DB.items():
             db_tipo = v[11] if len(v)>11 else ""
-            t_match = (tipo_sel == "Tutte" or db_tipo == tipo_sel or (tipo_sel == "Prodotto Home Made" and db_tipo == "Ricetta personale"))
+            t_match = (tipo_sel == "Tutte" or db_tipo == tipo_sel or (tipo_sel == "Prodotto Nutrilab" and db_tipo == "Ricetta personale"))
             m_match = (marca_sel == "Tutte" or (len(v)>10 and v[10] == marca_sel))
             if t_match and m_match:
                 marca = v[10] if len(v)>10 else ""
