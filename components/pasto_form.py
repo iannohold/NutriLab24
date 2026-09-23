@@ -75,13 +75,13 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
     if "diario_multi_items" not in st.session_state: st.session_state.diario_multi_items = []
     if "temp_recipe_diario" not in st.session_state: st.session_state.temp_recipe_diario = []
 
-    ## =========================================================
+    # =========================================================
     # LOGICA DI FILTRAGGIO E MAPPING AVANZATO (Marca in Evidenza)
     # =========================================================
     raw_tipologie = set([v[11] for v in MACROS_DB.values() if len(v)>11 and v[11]])
     if "Ricetta personale" in raw_tipologie:
         raw_tipologie.remove("Ricetta personale")
-        raw_tipologie.add("Prodotto Nutrilab") # 🔴 Sostituito qui!
+        raw_tipologie.add("Prodotto Nutrilab")
     tipologie_uniche = ["Tutte"] + sorted(list(raw_tipologie))
     marche_uniche = ["Tutte"] + sorted(list(set([v[10] for v in MACROS_DB.values() if len(v)>10 and v[10]])))
 
@@ -113,7 +113,6 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
         
         opzioni_vassoio, mappa_vassoio = get_opzioni_e_mappa(f_tipo, f_marca)
         
-        # Effetto "Barra di Ricerca": index=None forza l'apertura pulita da smartphone
         scelta_visibile = st.selectbox(
             "🔍 Cerca Alimento", 
             opzioni_vassoio, 
@@ -126,7 +125,6 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
             ing_scelto = mappa_vassoio[scelta_visibile]
             cal_p, p_p, c_p, f_p, fib_p, sat_p, sale_p, var_c, default_pz, unita_def, marca_db, tipo_db = MACROS_DB[ing_scelto]
             
-            # Form inline super compatto per cellulari
             c_qta, c_unit, c_pz, c_btn = st.columns([1.5, 1.2, 1.2, 1.5])
             qta_val = c_qta.number_input("Quantità", min_value=0.0, step=1.0 if unita_def=='pz' else 10.0, value=1.0 if unita_def=='pz' else 100.0, key=f"qta_vass_{data_selezionata}")
             unit_val = c_unit.selectbox("Unità", ["g", "ml", "pz"], index=["g", "ml", "pz"].index(unita_def) if unita_def in ["g", "ml", "pz"] else 0, key=f"unit_vass_{data_selezionata}")
@@ -156,13 +154,12 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
 
             def on_add_multi():
                 if qta_val > 0:
-                    is_home_made = tipo_db in ["Prodotto Home Made", "Ricetta personale"]
+                    is_home_made = tipo_db in ["Prodotto Nutrilab", "Ricetta personale", "Prodotto Home Made"]
                     st.session_state.diario_multi_items.append({
                         "id": uuid.uuid4().hex, "nome": ing_scelto, "quantita": float(qta_val), "unita": unit_val,
                         "peso_pz": float(pz_w), "is_cotto": mostra_cottura, "var_cottura": var_cottura_da_salvare,
                         "is_home_made": is_home_made
                     })
-                    # Svuota la barra di ricerca dopo l'aggiunta!
                     st.session_state[f"sel_vis_vass_{data_selezionata}"] = None
 
             can_add = True
@@ -314,20 +311,17 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                 ready_to_add = True
 
     # =========================================================
-    # 📚 # =========================================================
-    # 📚 FLUSSO 2: RICETTE (Aggiunge automaticamente " - Ricetta")
+    # 📚 FLUSSO 2: RICETTE
     # =========================================================
     elif tipo_inserimento_diario == "📚 Ricette":
         df_ricette_cloud = get_ricette_utente_e_community(USER_ID, ADMIN_ID)
         df_mie = df_ricette_cloud[df_ricette_cloud['User_ID'] == USER_ID]
         
-        # 🔴 Creiamo una mappa sicura per evitare duplicati come "Pippo - Ricetta - Ricetta"
         opzioni_ricette = []
         mappa_ricette = {}
         if not df_mie.empty:
             for nome_db in df_mie['Nome Ricetta'].dropna().tolist():
-                # Aggiunge il suffisso SOLO se non è già presente
-                nome_ui = f"{nome_db} - Ricetta" if not nome_db.endswith(" - Ricetta") else nome_db
+                nome_ui = f"{nome_db} - Ricetta" if not str(nome_db).endswith(" - Ricetta") else nome_db
                 opzioni_ricette.append(nome_ui)
                 mappa_ricette[nome_ui] = nome_db
         opzioni_ricette.sort()
@@ -341,7 +335,6 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
         )
         
         if ric_scelta_ui:
-            # 🔴 Recupera il nome originale esatto dal database usando la mappa
             ric_scelta_db = mappa_ricette[ric_scelta_ui]
             json_str = df_mie[df_mie['Nome Ricetta'] == ric_scelta_db]['Dati JSON'].iloc[0]
             df_r = pd.read_json(io.StringIO(json_str))
@@ -415,9 +408,7 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
             m_cal_disp = new_m_cal_tot * rt_consumo; m_p_disp = new_m_p_tot * rt_consumo; m_c_disp = new_m_c_tot * rt_consumo
             m_f_disp = new_m_f_tot * rt_consumo; m_sat_disp = new_m_sat_tot * rt_consumo; m_fib_disp = new_m_fib_tot * rt_consumo
             
-            # Suffisso automatico - Ricetta
-            nome_ricetta_pulito = f"{ric_scelta} - Ricetta" if " - Ricetta" not in ric_scelta else ric_scelta
-            elemento_inserito = f"🍽️ {nome_ricetta_pulito} (Variante)" if variante else f"🍽️ {nome_ricetta_pulito}"
+            elemento_inserito = f"🍽️ {ric_scelta_ui} (Variante)" if variante else f"🍽️ {ric_scelta_ui}"
             
             st.write("")
             st.success(f"💡 Stai registrando **{peso_consumato:.1f} g** complessivi.\n\n🔥 Cal: **{m_cal_disp:.0f} kcal** | 🍞 C: **{m_c_disp:.1f}g** | 🥩 P: **{m_p_disp:.1f}g** | 🥑 G: **{m_f_disp:.1f}g**")
@@ -567,7 +558,6 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                 
                 dettaglio_lib = ", ".join([f"{ing['quantita']:g}{ing['unita']} {ing['nome']}" for ing in st.session_state.temp_recipe_diario])
                 
-                # Suffisso automatico - Ricetta
                 nome_ricetta_libera = f"{nome_libera} - Ricetta" if " - Ricetta" not in nome_libera else nome_libera
                 elemento_inserito = f"⏱️ {nome_ricetta_libera} [{dettaglio_lib}]"
 
