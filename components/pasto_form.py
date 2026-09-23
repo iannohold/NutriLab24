@@ -65,7 +65,7 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
     with c2_ins:
         tipo_inserimento_diario = st.radio(
             "Seleziona la tipologia di inserimento:", 
-            ["📚 Dal tuo Ricettario", "🛒 Alimenti (Singoli o Multipli)", "⏱️ Ricetta Libera (Al volo)"], 
+            ["🛒 Alimenti", "📚 Ricette", "⏱️ Ricetta Libera (Al volo)"], 
             horizontal=True, key=f"tipo_ins_{data_selezionata}"
         )
 
@@ -91,104 +91,9 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
         return ["-- Seleziona --"] + sorted(filtrati)
 
     # =========================================================
-    # 📚 FLUSSO 1: RICETTARIO PERSONALE
+    # 🛒 FLUSSO 1: ALIMENTI
     # =========================================================
-    if tipo_inserimento_diario == "📚 Dal tuo Ricettario":
-        df_ricette_cloud = get_ricette_utente_e_community(USER_ID, ADMIN_ID)
-        df_mie = df_ricette_cloud[df_ricette_cloud['User_ID'] == USER_ID]
-        ricette_list = df_mie['Nome Ricetta'].dropna().tolist() if not df_mie.empty else []
-            
-        ric_scelta = st.selectbox("Cerca la ricetta nel tuo archivio:", ["-- Seleziona --"] + ricette_list, key=f"ric_scelta_{data_selezionata}")
-        
-        if ric_scelta != "-- Seleziona --":
-            json_str = df_mie[df_mie['Nome Ricetta'] == ric_scelta]['Dati JSON'].iloc[0]
-            df_r = pd.read_json(io.StringIO(json_str))
-            
-            st.markdown("### 1️⃣ La preparazione di oggi")
-            with st.expander("🛠️ Modifica ingredienti crudi (solo per questo pasto)", expanded=False):
-                mod_qty_raw = {}
-                mod_peso_pz = {}
-                for idx, row in df_r.iterrows():
-                    c1_r, c2_r = st.columns([2, 1]) if row['Unita'] == 'pz' else st.columns([1, 0.01])
-                    with c1_r:
-                        mod_qty_raw[idx] = st.number_input(f"{row['Nome']} ({row['Unita']})", min_value=0.0, value=float(row['Quantita']), step=1.0 if row['Unita'] == 'pz' else 5.0, key=f"mod_raw_{idx}_{data_selezionata}")
-                    if row['Unita'] == 'pz':
-                        with c2_r: mod_peso_pz[idx] = st.number_input(f"Peso 1 pz (g)", min_value=0.1, value=float(row.get('Peso_pz', 100.0)), step=1.0, key=f"mod_pz_{idx}_{data_selezionata}")
-                    else: mod_peso_pz[idx] = 0.0
-            
-            new_w_impasto_raw = new_w_altri_raw = new_m_cal_tot = new_m_p_tot = new_m_c_tot = new_m_f_tot = new_m_sat_tot = new_m_fib_tot = 0.0
-            variante = False
-            for idx, row in df_r.iterrows():
-                actual_qta = mod_qty_raw[idx]
-                if abs(actual_qta - float(row['Quantita'])) > 0.01: variante = True
-                if actual_qta > 0:
-                    u = str(row['Unita']).strip()
-                    pz_w = mod_peso_pz[idx] if u == 'pz' else 0.0
-                    w_ing_raw = actual_qta * pz_w if u == 'pz' else actual_qta
-                    if str(row.get('Utilizzo', 'Impasto')) == 'Impasto': new_w_impasto_raw += w_ing_raw
-                    else: new_w_altri_raw += w_ing_raw
-                    
-                    new_m_cal_tot += (float(row.get('Cal_100g', 0)) / 100) * w_ing_raw
-                    new_m_p_tot += (float(row.get('Prot_100g', 0)) / 100) * w_ing_raw
-                    new_m_c_tot += (float(row.get('Carb_100g', 0)) / 100) * w_ing_raw
-                    new_m_f_tot += (float(row.get('Fat_100g', 0)) / 100) * w_ing_raw
-                    new_m_sat_tot += (float(row.get('Sat_100g', 0)) / 100) * w_ing_raw
-                    new_m_fib_tot += (float(row.get('Fib_100g', 0)) / 100) * w_ing_raw
-            
-            r_cottura = bool(df_r.iloc[0].get('Cottura_Richiesta', False))
-            if r_cottura:
-                if str(df_r.iloc[0].get('Cottura_TipoResa', '')) == "Usa % di stima":
-                    var_cott_db = float(df_r.iloc[0]['Cottura_Variazione']) if 'Cottura_Variazione' in df_r.columns else -float(df_r.iloc[0].get('Cottura_Calo', 15.0))
-                    p_cot_new = new_w_impasto_raw * (1 + var_cott_db / 100.0)
-                else:
-                    vecchio_impasto_raw = float(df_r.iloc[0].get('Cottura_QtaTeglia', 100.0))
-                    vecchio_cotto_reale = float(df_r.iloc[0].get('Cottura_PesoReale', 85.0))
-                    var_perc = ((vecchio_cotto_reale - vecchio_impasto_raw) / vecchio_impasto_raw) if vecchio_impasto_raw > 0 else -0.15
-                    p_cot_new = new_w_impasto_raw * (1 + var_perc)
-            else:
-                p_cot_new = new_w_impasto_raw
-                
-            peso_finale_ricetta = p_cot_new + new_w_altri_raw
-            peso_crudo_totale = new_w_impasto_raw + new_w_altri_raw
-            porz_orig = float(df_r.iloc[0].get('Ricetta_Porzioni', 1.0))
-            if porz_orig <= 0: porz_orig = 1.0
-            peso_singola_porzione = peso_finale_ricetta / porz_orig
-            
-            st.info(f"⚖️ **Report Preparazione:** Peso: **{peso_crudo_totale:.1f} g** | Peso Cotto/Finito: **{peso_finale_ricetta:.1f} g**")
-            
-            st.markdown("### 2️⃣ Quanto ne hai mangiato?")
-            c_mod1, c_mod2 = st.columns(2)
-            tipo_inserimento = c_mod1.radio("Scegli come inserire la quantità consumata:", ["In Porzioni (Frazione)", "Grammi esatti"], key=f"tipo_qta_{data_selezionata}")
-            
-            if tipo_inserimento == "In Porzioni (Frazione)":
-                qta_val = c_mod2.number_input("Numero di porzioni mangiate", min_value=0.1, step=0.5, value=1.0, key=f"n_porz_{data_selezionata}")
-                rt_consumo = qta_val / porz_orig
-                peso_consumato = peso_finale_ricetta * rt_consumo
-                valore_salvataggio = qta_val; unita_salvataggio = "porzioni"
-            else:
-                peso_consumato = c_mod2.number_input("Grammi esatti mangiati (g)", min_value=1.0, step=10.0, value=float(peso_singola_porzione), key=f"g_esatti_{data_selezionata}")
-                rt_consumo = peso_consumato / peso_finale_ricetta if peso_finale_ricetta > 0 else 0
-                valore_salvataggio = peso_consumato; unita_salvataggio = "g"
-                
-            m_cal_disp = new_m_cal_tot * rt_consumo; m_p_disp = new_m_p_tot * rt_consumo; m_c_disp = new_m_c_tot * rt_consumo
-            m_f_disp = new_m_f_tot * rt_consumo; m_sat_disp = new_m_sat_tot * rt_consumo; m_fib_disp = new_m_fib_tot * rt_consumo
-            elemento_inserito = f"🍽️ {ric_scelta} (Variante)" if variante else f"🍽️ {ric_scelta}"
-            
-            st.write("")
-            st.success(f"💡 Stai registrando **{peso_consumato:.1f} g** complessivi.\n\n🔥 Cal: **{m_cal_disp:.0f} kcal** | 🍞 C: **{m_c_disp:.1f}g** | 🥩 P: **{m_p_disp:.1f}g** | 🥑 G: **{m_f_disp:.1f}g**")
-
-            rows_to_add.append({
-                "id": uuid.uuid4().hex, "data": str(data_selezionata), "pasto": pasto_sel, "elemento": elemento_inserito,
-                "quantita": valore_salvataggio, "unita": unita_salvataggio, "calorie": m_cal_disp, "carboidrati": m_c_disp, 
-                "proteine": m_p_disp, "grassi": m_f_disp, "saturi": m_sat_disp, "fibre": m_fib_disp, "user_id": USER_ID,
-                "tgt_cal": tgt_cal, "tgt_c": tgt_c, "tgt_p": tgt_p, "tgt_f": tgt_f
-            })
-            ready_to_add = True
-
-    # =========================================================
-    # 🛒 FLUSSO 2: ALIMENTI (SINGOLI O MULTIPLI NEL VASSOIO)
-    # =========================================================
-    elif tipo_inserimento_diario == "🛒 Alimenti (Singoli o Multipli)":
+    if tipo_inserimento_diario == "🛒 Alimenti":
         st.markdown("### 1️⃣ Componi il pasto nel Vassoio")
         
         c_filt1, c_filt2 = st.columns(2)
@@ -201,8 +106,9 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
             ing = st.session_state.get(f"vassoio_ing_{data_selezionata}")
             if ing and ing != "-- Seleziona --":
                 res = get_macros_and_match(ing)
-                unita_def = res[11]
-                peso_pz = res[10]
+                # 🔴 CORREZIONE INDICI: L'unità è al 10, il peso al 9
+                unita_def = res[10]
+                peso_pz = res[9]
                 st.session_state[f"vassoio_u_{data_selezionata}_sel"] = unita_def
                 
                 try:
@@ -293,14 +199,11 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
             for i, item in enumerate(st.session_state.diario_multi_items):
                 c1, c2, c3 = st.columns([0.6, 0.3, 0.1])
                 
-                # --- LOGICA INVERSIONE COTTO/CRUDO NEL VASSOIO ---
                 fattore_cottura = (1 + item.get("var_cottura", 0.0) / 100) if item.get("is_cotto") else 1.0
                 peso_mostrato = float(item['quantita']) * fattore_cottura
                 
-                # Il box ora mostra il peso COTTO (se c'è la spunta) o il CRUDO (se non c'è)
                 new_mostrato = c2.number_input("Q.tà nel Piatto", min_value=0.0, value=peso_mostrato, step=1.0 if item['unita'] == 'pz' else 5.0, key=f"edit_multi_{item['id']}", label_visibility="collapsed")
                 
-                # Se l'utente modifica il peso nel vassoio (es. da 120g a 90g cotto), ricalcoliamo il crudo dietro le quinte
                 if abs(new_mostrato - peso_mostrato) > 0.01: 
                     st.session_state.diario_multi_items[i]['quantita'] = new_mostrato / fattore_cottura if fattore_cottura > 0 else 0
                     st.rerun()
@@ -310,7 +213,6 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                     st.rerun()
 
                 cal, p, c, f, fib, sat, sale, _, _, _, _, _ = MACROS_DB[item["nome"]]
-                # item['quantita'] ora è sempre il crudo corretto e proporzionato
                 peso_eff_crudo = item['quantita'] * item.get("peso_pz", 0.0) if item["unita"] == "pz" else item['quantita']
                 
                 cal_i = (cal / 100) * peso_eff_crudo; c_i = (c / 100) * peso_eff_crudo; p_i = (p / 100) * peso_eff_crudo
@@ -404,23 +306,15 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                         cal, p, c, f, fib, sat, _, _, _, _, _, _ = MACROS_DB[item["nome"]]
                         peso_eff_crudo = item['quantita'] * item.get("peso_pz", 0.0) if item["unita"] == "pz" else item['quantita']
                         
-                        # --- MODIFICA SMART: Ricalcolo su Peso Cotto ---
                         if item.get("is_cotto"):
-                            # Calcoliamo il peso finale cotto
                             peso_finale_cotto = peso_eff_crudo * (1 + item.get("var_cottura", 0.0) / 100)
-                            
-                            # Registriamo come "Quantita" da mostrare nel diario il peso COTTO
                             qta_da_salvare = peso_finale_cotto * rt_consumo_vassoio
-                            unita_da_salvare = "g" # Forza grammi per il cotto
-                            
-                            # Integriamo nel nome l'origine a crudo per chiarezza nel diario
+                            unita_da_salvare = "g"
                             elemento_salvato = f"🛒 {item['nome']} (Da crudo: {peso_eff_crudo * rt_consumo_vassoio:.1f}g)"
                         else:
-                            # Comportamento standard per cibi non cotti
                             qta_da_salvare = item['quantita'] * rt_consumo_vassoio
                             unita_da_salvare = item['unita']
                             elemento_salvato = f"🛒 {item['nome']}"
-                        # -----------------------------------------------
 
                         rows_to_add.append({
                             "id": uuid.uuid4().hex, "data": str(data_selezionata), "pasto": pasto_sel,
@@ -431,6 +325,101 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                             "user_id": USER_ID, "tgt_cal": tgt_cal, "tgt_c": tgt_c, "tgt_p": tgt_p, "tgt_f": tgt_f
                         })
                 ready_to_add = True
+
+    # =========================================================
+    # 📚 FLUSSO 2: RICETTE (Ora al secondo posto)
+    # =========================================================
+    elif tipo_inserimento_diario == "📚 Ricette":
+        df_ricette_cloud = get_ricette_utente_e_community(USER_ID, ADMIN_ID)
+        df_mie = df_ricette_cloud[df_ricette_cloud['User_ID'] == USER_ID]
+        ricette_list = df_mie['Nome Ricetta'].dropna().tolist() if not df_mie.empty else []
+            
+        ric_scelta = st.selectbox("Cerca la ricetta nel tuo archivio:", ["-- Seleziona --"] + ricette_list, key=f"ric_scelta_{data_selezionata}")
+        
+        if ric_scelta != "-- Seleziona --":
+            json_str = df_mie[df_mie['Nome Ricetta'] == ric_scelta]['Dati JSON'].iloc[0]
+            df_r = pd.read_json(io.StringIO(json_str))
+            
+            st.markdown("### 1️⃣ La preparazione di oggi")
+            with st.expander("🛠️ Modifica ingredienti crudi (solo per questo pasto)", expanded=False):
+                mod_qty_raw = {}
+                mod_peso_pz = {}
+                for idx, row in df_r.iterrows():
+                    c1_r, c2_r = st.columns([2, 1]) if row['Unita'] == 'pz' else st.columns([1, 0.01])
+                    with c1_r:
+                        mod_qty_raw[idx] = st.number_input(f"{row['Nome']} ({row['Unita']})", min_value=0.0, value=float(row['Quantita']), step=1.0 if row['Unita'] == 'pz' else 5.0, key=f"mod_raw_{idx}_{data_selezionata}")
+                    if row['Unita'] == 'pz':
+                        with c2_r: mod_peso_pz[idx] = st.number_input(f"Peso 1 pz (g)", min_value=0.1, value=float(row.get('Peso_pz', 100.0)), step=1.0, key=f"mod_pz_{idx}_{data_selezionata}")
+                    else: mod_peso_pz[idx] = 0.0
+            
+            new_w_impasto_raw = new_w_altri_raw = new_m_cal_tot = new_m_p_tot = new_m_c_tot = new_m_f_tot = new_m_sat_tot = new_m_fib_tot = 0.0
+            variante = False
+            for idx, row in df_r.iterrows():
+                actual_qta = mod_qty_raw[idx]
+                if abs(actual_qta - float(row['Quantita'])) > 0.01: variante = True
+                if actual_qta > 0:
+                    u = str(row['Unita']).strip()
+                    pz_w = mod_peso_pz[idx] if u == 'pz' else 0.0
+                    w_ing_raw = actual_qta * pz_w if u == 'pz' else actual_qta
+                    if str(row.get('Utilizzo', 'Impasto')) == 'Impasto': new_w_impasto_raw += w_ing_raw
+                    else: new_w_altri_raw += w_ing_raw
+                    
+                    new_m_cal_tot += (float(row.get('Cal_100g', 0)) / 100) * w_ing_raw
+                    new_m_p_tot += (float(row.get('Prot_100g', 0)) / 100) * w_ing_raw
+                    new_m_c_tot += (float(row.get('Carb_100g', 0)) / 100) * w_ing_raw
+                    new_m_f_tot += (float(row.get('Fat_100g', 0)) / 100) * w_ing_raw
+                    new_m_sat_tot += (float(row.get('Sat_100g', 0)) / 100) * w_ing_raw
+                    new_m_fib_tot += (float(row.get('Fib_100g', 0)) / 100) * w_ing_raw
+            
+            r_cottura = bool(df_r.iloc[0].get('Cottura_Richiesta', False))
+            if r_cottura:
+                if str(df_r.iloc[0].get('Cottura_TipoResa', '')) == "Usa % di stima":
+                    var_cott_db = float(df_r.iloc[0]['Cottura_Variazione']) if 'Cottura_Variazione' in df_r.columns else -float(df_r.iloc[0].get('Cottura_Calo', 15.0))
+                    p_cot_new = new_w_impasto_raw * (1 + var_cott_db / 100.0)
+                else:
+                    vecchio_impasto_raw = float(df_r.iloc[0].get('Cottura_QtaTeglia', 100.0))
+                    vecchio_cotto_reale = float(df_r.iloc[0].get('Cottura_PesoReale', 85.0))
+                    var_perc = ((vecchio_cotto_reale - vecchio_impasto_raw) / vecchio_impasto_raw) if vecchio_impasto_raw > 0 else -0.15
+                    p_cot_new = new_w_impasto_raw * (1 + var_perc)
+            else:
+                p_cot_new = new_w_impasto_raw
+                
+            peso_finale_ricetta = p_cot_new + new_w_altri_raw
+            peso_crudo_totale = new_w_impasto_raw + new_w_altri_raw
+            porz_orig = float(df_r.iloc[0].get('Ricetta_Porzioni', 1.0))
+            if porz_orig <= 0: porz_orig = 1.0
+            peso_singola_porzione = peso_finale_ricetta / porz_orig
+            
+            st.info(f"⚖️ **Report Preparazione:** Peso: **{peso_crudo_totale:.1f} g** | Peso Cotto/Finito: **{peso_finale_ricetta:.1f} g**")
+            
+            st.markdown("### 2️⃣ Quanto ne hai mangiato?")
+            c_mod1, c_mod2 = st.columns(2)
+            tipo_inserimento = c_mod1.radio("Scegli come inserire la quantità consumata:", ["In Porzioni (Frazione)", "Grammi esatti"], key=f"tipo_qta_{data_selezionata}")
+            
+            if tipo_inserimento == "In Porzioni (Frazione)":
+                qta_val = c_mod2.number_input("Numero di porzioni mangiate", min_value=0.1, step=0.5, value=1.0, key=f"n_porz_{data_selezionata}")
+                rt_consumo = qta_val / porz_orig
+                peso_consumato = peso_finale_ricetta * rt_consumo
+                valore_salvataggio = qta_val; unita_salvataggio = "porzioni"
+            else:
+                peso_consumato = c_mod2.number_input("Grammi esatti mangiati (g)", min_value=1.0, step=10.0, value=float(peso_singola_porzione), key=f"g_esatti_{data_selezionata}")
+                rt_consumo = peso_consumato / peso_finale_ricetta if peso_finale_ricetta > 0 else 0
+                valore_salvataggio = peso_consumato; unita_salvataggio = "g"
+                
+            m_cal_disp = new_m_cal_tot * rt_consumo; m_p_disp = new_m_p_tot * rt_consumo; m_c_disp = new_m_c_tot * rt_consumo
+            m_f_disp = new_m_f_tot * rt_consumo; m_sat_disp = new_m_sat_tot * rt_consumo; m_fib_disp = new_m_fib_tot * rt_consumo
+            elemento_inserito = f"🍽️ {ric_scelta} (Variante)" if variante else f"🍽️ {ric_scelta}"
+            
+            st.write("")
+            st.success(f"💡 Stai registrando **{peso_consumato:.1f} g** complessivi.\n\n🔥 Cal: **{m_cal_disp:.0f} kcal** | 🍞 C: **{m_c_disp:.1f}g** | 🥩 P: **{m_p_disp:.1f}g** | 🥑 G: **{m_f_disp:.1f}g**")
+
+            rows_to_add.append({
+                "id": uuid.uuid4().hex, "data": str(data_selezionata), "pasto": pasto_sel, "elemento": elemento_inserito,
+                "quantita": valore_salvataggio, "unita": unita_salvataggio, "calorie": m_cal_disp, "carboidrati": m_c_disp, 
+                "proteine": m_p_disp, "grassi": m_f_disp, "saturi": m_sat_disp, "fibre": m_fib_disp, "user_id": USER_ID,
+                "tgt_cal": tgt_cal, "tgt_c": tgt_c, "tgt_p": tgt_p, "tgt_f": tgt_f
+            })
+            ready_to_add = True
 
     # =========================================================
     # ⏱️ FLUSSO 3: RICETTA LIBERA (AL VOLO)
@@ -448,10 +437,16 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
             ing = st.session_state.get(f"ing_lib_sel_{data_selezionata}")
             if ing and ing != "-- Seleziona --":
                 res = get_macros_and_match(ing)
-                unita_def = res[11]
-                peso_pz = res[10]
+                # 🔴 CORREZIONE INDICI (Unità: 10, Peso: 9)
+                unita_def = res[10]
+                peso_pz = res[9]
                 st.session_state[f"unit_lib_val_{data_selezionata}_sel"] = unita_def
-                st.session_state[f"lib_pz_w_{data_selezionata}"] = peso_pz if peso_pz > 0 else 0.0
+                
+                try:
+                    peso_val = float(peso_pz)
+                except (ValueError, TypeError):
+                    peso_val = 0.0
+                st.session_state[f"lib_pz_w_{data_selezionata}"] = peso_val if peso_val > 0 else 0.0
 
         c_ing, c_qta, c_unit, c_pz, c_btn = st.columns([3, 1, 1, 1, 1.5])
         ing_libero = c_ing.selectbox("Ingrediente", opzioni_libera, key=f"ing_lib_sel_{data_selezionata}", on_change=update_lib_from_selection)
