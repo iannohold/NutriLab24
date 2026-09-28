@@ -1,9 +1,6 @@
 import streamlit as st
-from streamlit_cookies_controller import CookieController
 from sqlalchemy import text
 from services.db import get_conn
-
-cookie_controller = CookieController()
 
 def get_utente_db(email):
     """Recupera l'utente dal database Supabase usando l'email come ID."""
@@ -14,7 +11,6 @@ def get_utente_db(email):
         
     conn = get_conn()
     try:
-        # Rimossa la funzione text() per massima compatibilità con Streamlit
         query = "SELECT password, nome, is_admin, is_active FROM utenti WHERE LOWER(email) = LOWER(:e)"
         df = conn.query(query, params={"e": email.strip()}, ttl=0)
         
@@ -42,17 +38,7 @@ def require_login():
             </style>
         """, unsafe_allow_html=True)
 
-    saved_user = None
-    try: saved_user = cookie_controller.get('nutrilab_user')
-    except Exception: pass
-
-    if not st.session_state.logged_in and saved_user:
-        user_data = get_utente_db(saved_user)
-        if user_data and user_data["is_active"]:
-            st.session_state.logged_in = True
-            st.session_state.username = saved_user
-            st.session_state.is_admin = user_data["is_admin"]
-
+    # Recupera il login dai parametri URL se presente (sostituisce i cookie)
     if not st.session_state.logged_in and "user" in st.query_params:
         q_user = st.query_params["user"]
         user_data = get_utente_db(q_user)
@@ -60,13 +46,10 @@ def require_login():
             st.session_state.logged_in = True
             st.session_state.username = q_user
             st.session_state.is_admin = user_data["is_admin"]
-            try: cookie_controller.set('nutrilab_user', q_user, max_age=2592000)
-            except Exception: pass
 
     if not st.session_state.logged_in:
         st.warning("⚠️ Sessione scaduta o non avviata. Effettua il login per continuare.")
         
-        # 🔴 MODIFICA VISIVA: Se non vedi "(V2)", l'app sta leggendo il file vecchio!
         st.markdown("<h2 style='text-align: center;'>🔐 Accesso a NutriLab24 (V2)</h2>", unsafe_allow_html=True)
         
         c1, c2, c3 = st.columns([1, 2, 1])
@@ -87,8 +70,6 @@ def require_login():
                                 st.session_state.username = email_input
                                 st.session_state.is_admin = user_data["is_admin"]
                                 st.query_params["user"] = email_input 
-                                try: cookie_controller.set('nutrilab_user', email_input, max_age=2592000)
-                                except Exception: pass
                                 st.success(f"✅ Bentornato {user_data['nome']}!")
                                 st.rerun()
                             else:
