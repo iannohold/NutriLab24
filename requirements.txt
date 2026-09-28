@@ -6,6 +6,6 @@ recipe-scrapers
 openpyxl
 plotly
 SQLAlchemy
+psycopg-binary
 psycopg2-binary
 streamlit-cookies-controller
-psycopg-binary
