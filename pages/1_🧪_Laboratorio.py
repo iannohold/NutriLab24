@@ -32,14 +32,12 @@ IS_ADMIN = st.session_state.get("is_admin", False)
 MACROS_DB = get_current_macros_db()
 conn = get_conn()
 
+# Ripuliti gli stati inutilizzati della vecchia UI
 stati_iniziali = [
     ('nome_ricetta', "Nuova Ricetta"), ('tipo_ricetta', []), ('procedimento', ""), ('ingredients', []), 
-    ('ing_scelto', "-- Seleziona --"), ('input_qty', None), ('input_unit', "g"), ('input_pz_w', 0.0), 
-    ('input_ruolo', "Impasto"), ('input_cal', None), ('input_p', None), ('input_c', None), ('input_f', None), 
-    ('input_fib', None), ('input_sat', None), ('input_sale', None), ('new_name_free', ""), ('new_name_manual', ""),
     ('riposo', ""), ('porzioni', 1), ('richiede_cottura', False), ('m_cot', "Forno"), ('t_cot', ""),
-    ('temp_cot', 180), ('qta_teglia', 100.0), ('tipo_resa', "Usa % di stima"), ('var_cottura', -15.0), ('peso_cotto_reale', 85.0),
-    ('confirm_del', "")
+    ('temp_cot', 180), ('qta_teglia', 100.0), ('tipo_resa', "Usa % di stima"), ('var_cottura', -15.0), 
+    ('peso_cotto_reale', 85.0), ('confirm_del', "")
 ]
 
 for key, default in stati_iniziali:
@@ -74,102 +72,194 @@ with col_ricarica:
 # --- TABS INSERIMENTO ---
 tab_manuale, tab_cloud, tab_excel, tab_web, tab_testo = st.tabs(["✍️ Singolo", "☁️ Da Cloud", "📁 Da Excel/CSV", "🌐 Link Web", "📝 Testo"])
 
+# =========================================================
+# FLUSSO "SINGOLO" - UI OTTIMIZZATA E MOBILE-FIRST
+# =========================================================
 with tab_manuale:
-    st.write("Inserisci manualmente o cerca nel database web.")
-    opzioni = ["-- Seleziona --", "Altro (Ricerca Libera su Web)", "Altro (Inserimento Manuale)"] + sorted(list(MACROS_DB.keys()))
-    
-    def update_macros_from_selection():
-        scelta = st.session_state.get("ing_scelto", "-- Seleziona --")
-        if scelta in ["-- Seleziona --", "Altro (Inserimento Manuale)", "Altro (Ricerca Libera su Web)"]:
-            st.session_state.input_cal = None; st.session_state.input_p = None; st.session_state.input_c = None
-            st.session_state.input_f = None; st.session_state.input_sat = None; st.session_state.input_fib = None
-            st.session_state.input_sale = None; st.session_state.input_unit = 'g'; st.session_state.input_pz_w = 0.0
-        else:
-            m_name, cal, p, c, f, fib, sat, sale, var_cott, peso_pz, unita_def, m_marca, m_tipo = get_macros_and_match(scelta)
-            st.session_state.input_cal = float(cal); st.session_state.input_p = float(p); st.session_state.input_c = float(c)
-            st.session_state.input_f = float(f); st.session_state.input_sat = float(sat); st.session_state.input_fib = float(fib)
-            st.session_state.input_sale = float(sale); st.session_state.input_unit = unita_def; st.session_state.input_pz_w = peso_pz
+    st.write("Cerca nel tuo database, esplora OpenFoodFacts o crea da zero.")
+    modo_ins = st.radio("Metodo di inserimento:", ["🗄️ Dal tuo Database", "🌐 Cerca sul Web", "✍️ Crea Nuovo"], horizontal=True, label_visibility="collapsed")
 
-    def fetch_macros_from_web_btn():
-        from services.db import cerca_alimento_web
-        new_name = st.session_state.get("new_name_free", "")
-        if new_name:
-            risultato = cerca_alimento_web(new_name)
-            if risultato[0]:
-                st.session_state.input_cal = float(risultato[1]); st.session_state.input_p = float(risultato[2])
-                st.session_state.input_c = float(risultato[3]); st.session_state.input_f = float(risultato[4])
-                st.session_state.input_sat = float(risultato[6]); st.session_state.input_fib = float(risultato[5])
-                st.session_state.input_sale = float(risultato[7]); st.session_state.input_marca = risultato[11]
-                if new_name.isdigit(): st.session_state.input_ean = new_name
-                st.toast("✅ Prodotto trovato! Parametri compilati in basso.", icon="🎯")
+    # --- DAL DATABASE LOCALE ---
+    if modo_ins == "🗄️ Dal tuo Database":
+        ing_scelto = st.selectbox("Cerca Ingrediente:", sorted(list(MACROS_DB.keys())), index=None, placeholder="Clicca e digita per cercare...", key="lab_db_sel")
+
+        if ing_scelto:
+            mac = MACROS_DB[ing_scelto]
+            cal_b, p_b, c_b, f_b, fib_b, sat_b, sale_b, var_b, pz_w_b, unita_b, marca_b, tipo_b = mac
+
+            c_q, c_u, c_r, c_pw, c_btn = st.columns([1.5, 1, 1.5, 1, 1.5])
+            qta = c_q.number_input("Quantità", min_value=0.0, step=10.0, value=None, placeholder="Es. 100", key="lab_qta")
+            idx_u = ["g", "ml", "pz"].index(unita_b) if unita_b in ["g", "ml", "pz"] else 0
+            unit = c_u.selectbox("Unità", ["g", "ml", "pz"], index=idx_u, key="lab_unit")
+            ruolo = c_r.selectbox("Utilizzo", RUOLI_LIST, index=0, key="lab_ruolo")
+            pw = c_pw.number_input("Peso 1pz", min_value=0.0, value=float(pz_w_b), step=1.0, key="lab_pw") if unit == 'pz' else 0.0
+
+            with st.expander("🔍 Valori Nutrizionali (su 100g) & Info", expanded=False):
+                modifica_attiva = st.checkbox("✏️ Modifica macros solo per questo inserimento", key="lab_mod_db")
+                if modifica_attiva:
+                    m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
+                    cal_f = m1.number_input("Kcal", value=float(cal_b), key="m1_db")
+                    c_f = m2.number_input("Carb", value=float(c_b), key="m2_db")
+                    p_f = m3.number_input("Prot", value=float(p_b), key="m3_db")
+                    f_f = m4.number_input("Gras", value=float(f_b), key="m4_db")
+                    sat_f = m5.number_input("Sat", value=float(sat_b), key="m5_db")
+                    fib_f = m6.number_input("Fib", value=float(fib_b), key="m6_db")
+                    sale_f = m7.number_input("Sale", value=float(sale_b), key="m7_db")
+                else:
+                    st.markdown(f"**Kcal:** {cal_b:.0f} | **C:** {c_b:.1f}g | **P:** {p_b:.1f}g | **G:** {f_b:.1f}g | **Sat:** {sat_b:.1f}g | **Fib:** {fib_b:.1f}g | **Sale:** {sale_b:.2f}g")
+                    cal_f, c_f, p_f, f_f, sat_f, fib_f, sale_f = cal_b, c_b, p_b, f_b, sat_b, fib_b, sale_b
+
+            # CALLBACK PER IL SALVATAGGIO: Permette di pulire l'interfaccia in modo sicuro
+            def on_add_db(ing, q, u, pw_val, r, c_cal, c_p, c_carb, c_f, c_sat, c_fib, c_sal, c_mrc, c_tip):
+                st.session_state.ingredients.append({
+                    "id": uuid.uuid4().hex, "nome": ing, "matched_name": ing,
+                    "quantita": float(q), "unita": u, "peso_pz": float(pw_val),
+                    "peso": float(q)*pw_val if u=='pz' else float(q),
+                    "ruolo": r, "cal_100": c_cal, "prot_100": c_p, "carb_100": c_carb,
+                    "fat_100": c_f, "sat_100": c_sat, "fib_100": c_fib, "sale_100": c_sal,
+                    "marca": c_mrc, "tipologia": c_tip, "ean": ""
+                })
+                salva_bozza_locale()
+                st.session_state.lab_db_sel = None
+
+            with c_btn:
+                st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+                can_add_db = (qta is not None and qta > 0) and not (unit == 'pz' and pw <= 0)
+                
+                st.button(
+                    "➕ Aggiungi", type="primary", use_container_width=True, key="btn_add_db", 
+                    disabled=not can_add_db, on_click=on_add_db, 
+                    args=(ing_scelto, qta, unit, pw, ruolo, cal_f, p_f, c_f, f_f, sat_f, fib_f, sale_f, marca_b, tipo_b)
+                )
+                
+                if unit == 'pz' and pw <= 0:
+                    st.error("Peso pz = 0!")
+
+    # --- RICERCA SUL WEB ---
+    elif modo_ins == "🌐 Cerca sul Web":
+        c_web1, c_web2 = st.columns([3, 1])
+        q_web = c_web1.text_input("Codice a barre (EAN) o nome prodotto:", placeholder="Es. 8001234567890 oppure 'Pan Bauletto'", key="q_web_in")
+        
+        if c_web2.button("🔍 Cerca su OpenFoodFacts", use_container_width=True):
+            if q_web:
+                with st.spinner("Ricerca in corso..."):
+                    from services.db import cerca_alimento_web
+                    res = cerca_alimento_web(q_web)
+                    if res[0]:
+                        st.session_state.web_res = res
+                        st.session_state.web_name = q_web.title() if not q_web.isdigit() else "Prodotto Web"
+                        st.toast("✅ Prodotto trovato!", icon="🎯")
+                    else:
+                        st.session_state.web_res = None
+                        st.error("❌ Nessun risultato trovato.")
             else:
-                st.toast("❌ Nessun risultato trovato nel database mondiale.", icon="🚫")
+                st.warning("Inserisci un testo per cercare.")
 
-    st.selectbox("Cerca ingrediente", options=opzioni, key="ing_scelto", on_change=update_macros_from_selection)
-    if st.session_state.get("ing_scelto") == "Altro (Ricerca Libera su Web)":
-        c_t, c_b = st.columns([3, 1])
-        c_t.text_input("Nome o EAN da cercare online:", key="new_name_free")
-        c_b.write(""); c_b.button("🔍 Cerca Online", on_click=fetch_macros_from_web_btn)
-    elif st.session_state.get("ing_scelto") == "Altro (Inserimento Manuale)":
-        st.text_input("Nome nuovo ingrediente:", key="new_name_manual")
+        if st.session_state.get("web_res"):
+            res = st.session_state.web_res
+            nome_sugg = st.text_input("Nome Prodotto (modificabile)", value=st.session_state.web_name, key="web_n_edit")
+            
+            c_q, c_u, c_r, c_pw, c_btn = st.columns([1.5, 1, 1.5, 1, 1.5])
+            qta = c_q.number_input("Quantità", min_value=0.0, step=10.0, value=None, placeholder="Es. 100", key="web_qta")
+            unit = c_u.selectbox("Unità", ["g", "ml", "pz"], key="web_unit")
+            ruolo = c_r.selectbox("Utilizzo", RUOLI_LIST, index=0, key="web_ruolo")
+            pw = c_pw.number_input("Peso 1pz", min_value=0.0, value=float(res[9]), step=1.0, key="web_pw") if unit == 'pz' else 0.0
 
-    c_mrc, c_tip, c_ean = st.columns([1.5, 1.5, 1])
-    val_marca = c_mrc.text_input("Marca (opzionale)", key="input_marca", value=st.session_state.get("input_marca", ""))
-    val_tipologia = c_tip.selectbox("Tipologia", ["Materia Prima", "Prodotto Confezionato", "Integratore", "Ricetta Personale"], key="input_tipologia")
-    val_ean = c_ean.text_input("Codice EAN", key="input_ean", value=st.session_state.get("input_ean", ""))
+            with st.expander("🔍 Valori Nutrizionali Importati (su 100g)", expanded=False):
+                modifica_attiva = st.checkbox("✏️ Correggi macros se errati", key="web_mod_db")
+                if modifica_attiva:
+                    m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
+                    cal_f = m1.number_input("Kcal", value=float(res[1]), key="m1_web")
+                    c_f = m2.number_input("Carb", value=float(res[3]), key="m2_web")
+                    p_f = m3.number_input("Prot", value=float(res[2]), key="m3_web")
+                    f_f = m4.number_input("Gras", value=float(res[4]), key="m4_web")
+                    sat_f = m5.number_input("Sat", value=float(res[6]), key="m5_web")
+                    fib_f = m6.number_input("Fib", value=float(res[5]), key="m6_web")
+                    sale_f = m7.number_input("Sale", value=float(res[7]), key="m7_web")
+                else:
+                    st.markdown(f"**Kcal:** {res[1]:.0f} | **C:** {res[3]:.1f}g | **P:** {res[2]:.1f}g | **G:** {res[4]:.1f}g | **Sat:** {res[6]:.1f}g | **Fib:** {res[5]:.1f}g | **Sale:** {res[7]:.2f}g")
+                    cal_f, c_f, p_f, f_f, sat_f, fib_f, sale_f = res[1], res[3], res[2], res[4], res[6], res[5], res[7]
+                st.markdown(f"<small>Marca: {res[11]} | Tipo: {res[12]}</small>", unsafe_allow_html=True)
 
-    c_q, c_u, c_r, c_pw = st.columns([1, 1, 1, 1.5])
-    qty = c_q.number_input("Quantità", min_value=0.0, step=1.0, key="input_qty", value=None)
-    unit = c_u.selectbox("Unità", options=["g", "ml", "pz"], key="input_unit")
-    ruolo = c_r.selectbox("Utilizzo", options=RUOLI_LIST, key="input_ruolo")
-    
-    if unit == "pz":
-        default_pz_lab = 0.0
-        scelta = st.session_state.get("ing_scelto", "-- Seleziona --")
-        if scelta not in ["-- Seleziona --", "Altro (Inserimento Manuale)", "Altro (Ricerca Libera su Web)"] and scelta in MACROS_DB:
-            default_pz_lab = MACROS_DB[scelta][8]
-        pz_w = c_pw.number_input(f"Peso 1 pz (g) [da DB]", min_value=0.0, step=1.0, value=float(default_pz_lab), key="input_pz_w")
-    else: pz_w = 0.0
+            # CALLBACK PER IL SALVATAGGIO
+            def on_add_web(n_sugg, q, u, pw_val, r, c_cal, c_p, c_carb, c_f, c_sat, c_fib, c_sal, r11, r12, ean):
+                st.session_state.ingredients.append({
+                    "id": uuid.uuid4().hex, "nome": n_sugg, "matched_name": n_sugg,
+                    "quantita": float(q), "unita": u, "peso_pz": float(pw_val),
+                    "peso": float(q)*pw_val if u=='pz' else float(q),
+                    "ruolo": r, "cal_100": c_cal, "prot_100": c_p, "carb_100": c_carb,
+                    "fat_100": c_f, "sat_100": c_sat, "fib_100": c_fib, "sale_100": c_sal,
+                    "marca": r11, "tipologia": r12, "ean": ean if ean.isdigit() else ""
+                })
+                st.session_state.web_res = None
+                st.session_state.q_web_in = ""
+                salva_bozza_locale()
 
-    c_cal, c_c, c_p, c_f, c_s, c_fib, c_sal = st.columns(7)
-    val_cal = c_cal.number_input("Calorie", key="input_cal", step=1.0, value=st.session_state.get("input_cal", None))
-    val_c = c_c.number_input("Carb.", key="input_c", step=0.1, value=st.session_state.get("input_c", None))
-    val_p = c_p.number_input("Prot.", key="input_p", step=0.1, value=st.session_state.get("input_p", None))
-    val_f = c_f.number_input("Grassi", key="input_f", step=0.1, value=st.session_state.get("input_f", None))
-    val_sat = c_s.number_input("Saturi", key="input_sat", step=0.1, value=st.session_state.get("input_sat", None))
-    val_fib = c_fib.number_input("Fibre", key="input_fib", step=0.1, value=st.session_state.get("input_fib", None))
-    val_sale = c_sal.number_input("Sale", key="input_sale", step=0.1, value=st.session_state.get("input_sale", None))
+            with c_btn:
+                st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+                can_add_web = (qta is not None and qta > 0) and bool(nome_sugg) and not (unit == 'pz' and pw <= 0)
+                ean_val = st.session_state.get("q_web_in", "")
+                
+                st.button(
+                    "➕ Aggiungi", type="primary", use_container_width=True, key="btn_add_web", 
+                    disabled=not can_add_web, on_click=on_add_web, 
+                    args=(nome_sugg, qta, unit, pw, ruolo, cal_f, p_f, c_f, f_f, sat_f, fib_f, sale_f, res[11], res[12], ean_val)
+                )
+                
+                if unit == 'pz' and pw <= 0:
+                    st.error("Peso pz = 0!")
 
-    def aggiungi_singolo():
-        scelta = st.session_state.get("ing_scelto", "-- Seleziona --")
-        act = st.session_state.get("new_name_free", "") if scelta == "Altro (Ricerca Libera su Web)" else (st.session_state.get("new_name_manual", "") if scelta == "Altro (Inserimento Manuale)" else scelta)
-        if qty is not None and qty > 0 and act and act != "-- Seleziona --":
-            m_name, m_cal, m_p, m_c, m_f, m_fib, m_sat, m_sale, m_var, m_pesopz, m_unita, m_marca, m_tipo = get_macros_and_match(act)
+    # --- INSERIMENTO MANUALE ---
+    elif modo_ins == "✍️ Crea Nuovo":
+        nome_man = st.text_input("Nome Ingrediente:", placeholder="Es. Farina di mandorle", key="man_nome")
+        
+        c_q, c_u, c_r, c_pw, c_btn = st.columns([1.5, 1, 1.5, 1, 1.5])
+        qta = c_q.number_input("Quantità", min_value=0.0, step=10.0, value=None, placeholder="Es. 100", key="man_qta")
+        unit = c_u.selectbox("Unità", ["g", "ml", "pz"], key="man_unit")
+        ruolo = c_r.selectbox("Utilizzo", RUOLI_LIST, index=0, key="man_ruolo")
+        pw = c_pw.number_input("Peso 1pz", min_value=0.0, value=0.0, step=1.0, key="man_pw") if unit == 'pz' else 0.0
+
+        with st.expander("📝 Inserisci Valori Nutrizionali (su 100g) *OBBLIGATORI*", expanded=True):
+            m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
+            cal_f = m1.number_input("Kcal", value=0.0, step=1.0, key="m1_man")
+            c_f = m2.number_input("Carb", value=0.0, step=0.1, key="m2_man")
+            p_f = m3.number_input("Prot", value=0.0, step=0.1, key="m3_man")
+            f_f = m4.number_input("Gras", value=0.0, step=0.1, key="m4_man")
+            sat_f = m5.number_input("Sat", value=0.0, step=0.1, key="m5_man")
+            fib_f = m6.number_input("Fib", value=0.0, step=0.1, key="m6_man")
+            sale_f = m7.number_input("Sale", value=0.0, step=0.1, key="m7_man")
+
+        with st.expander("🏷️ Dettagli Aggiuntivi (Marca, Tipo) - Opzionali", expanded=False):
+            c_mrc, c_tip, c_ean = st.columns([1.5, 1.5, 1])
+            marca_f = c_mrc.text_input("Marca", key="mrc_man")
+            tipo_f = c_tip.selectbox("Tipologia", ["Materia Prima", "Prodotto Confezionato", "Integratore", "Prodotto Nutrilab"], key="tip_man")
+            ean_f = c_ean.text_input("Codice EAN", key="ean_man")
+
+        # CALLBACK PER IL SALVATAGGIO
+        def on_add_man(n_man, q, u, pw_val, r, c_cal, c_p, c_carb, c_f, c_sat, c_fib, c_sal, m_f, t_f, e_f):
             st.session_state.ingredients.append({
-                "id": uuid.uuid4().hex, "nome": act.title(), "matched_name": m_name, "quantita": float(qty), "unita": unit, 
-                "peso_pz": float(pz_w), "peso": float(qty) * pz_w if unit == 'pz' else float(qty), 
-                "ruolo": st.session_state.get("input_ruolo", "Impasto"),
-                "cal_100": float(st.session_state.get("input_cal") or 0.0),
-                "prot_100": float(st.session_state.get("input_p") or 0.0), 
-                "carb_100": float(st.session_state.get("input_c") or 0.0), 
-                "fat_100": float(st.session_state.get("input_f") or 0.0), 
-                "sat_100": float(st.session_state.get("input_sat") or 0.0),
-                "fib_100": float(st.session_state.get("input_fib") or 0.0),
-                "sale_100": float(st.session_state.get("input_sale") or 0.0),
-                "marca": st.session_state.get("input_marca", "").strip(),
-                "tipologia": st.session_state.get("input_tipologia", "Materia Prima"),
-                "ean": st.session_state.get("input_ean", "").strip()
+                "id": uuid.uuid4().hex, "nome": n_man.strip().title(), "matched_name": n_man.strip().title(),
+                "quantita": float(q), "unita": u, "peso_pz": float(pw_val),
+                "peso": float(q)*pw_val if u=='pz' else float(q),
+                "ruolo": r, "cal_100": c_cal, "prot_100": c_p, "carb_100": c_carb,
+                "fat_100": c_f, "sat_100": c_sat, "fib_100": c_fib, "sale_100": c_sal,
+                "marca": m_f, "tipologia": t_f, "ean": e_f
             })
-            st.session_state.input_qty = None; st.session_state.ing_scelto = "-- Seleziona --"; st.session_state.input_ruolo = "Impasto"
-            st.session_state.input_marca = ""; st.session_state.input_ean = ""
-        salva_bozza_locale()
+            salva_bozza_locale()
+            st.session_state.man_nome = ""
 
-    can_add = True
-    if unit == "pz" and pz_w <= 0:
-        st.warning("⚠️ Hai selezionato 'pz' ma il peso medio è 0. Inserisci il peso per pezzo.")
-        can_add = False
-
-    st.button("➕ Aggiungi", type="primary", on_click=aggiungi_singolo, disabled=(qty is None or qty <= 0 or not can_add))
+        with c_btn:
+            st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+            can_add_man = (qta is not None and qta > 0) and bool(nome_man.strip()) and not (unit == 'pz' and pw <= 0)
+            
+            st.button(
+                "➕ Aggiungi", type="primary", use_container_width=True, key="btn_add_man", 
+                disabled=not can_add_man, on_click=on_add_man, 
+                args=(nome_man, qta, unit, pw, ruolo, cal_f, p_f, c_f, f_f, sat_f, fib_f, sale_f, marca_f, tipo_f, ean_f)
+            )
+            
+            if unit == 'pz' and pw <= 0:
+                st.error("Peso pz = 0!")
 
 with tab_cloud:
     st.write("Gestisci le tue ricette o esplora quelle della community.")
@@ -525,7 +615,7 @@ if st.session_state.ingredients:
                             fib_100 = (fib_f / peso_finale * 100) if peso_finale > 0 else 0
                             sale_100 = (sale_f / peso_finale * 100) if peso_finale > 0 else 0
                             
-                            success = salva_su_cloud(nome_porz_db, cal_100, p_100, c_100, f_100, sat_100, fib_100, sale_100, 0.0, w_porz, "pz", marca="NutriLab", tipologia="Ricetta Personale")
+                            success = salva_su_cloud(nome_porz_db, cal_100, p_100, c_100, f_100, sat_100, fib_100, sale_100, 0.0, w_porz, "pz", marca="NutriLab", tipologia="Prodotto Nutrilab")
                             if success:
                                 st.success(f"✅ '{nome_porz_db}' salvato nel Database Prodotti!")
                                 st.rerun()
