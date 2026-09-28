@@ -86,7 +86,10 @@ with tab_manuale:
         
         # 📸 Modulo Fotocamera a Scomparsa per Database Locale
         with st.expander("📸 Scansiona Codice a Barre", expanded=False):
-            foto_db = st.camera_input("Inquadra l'EAN di un prodotto già salvato", key="cam_db")
+            c_spazio1, c_cam, c_spazio2 = st.columns([1, 2, 1])
+            with c_cam:
+                foto_db = st.camera_input("Inquadra l'EAN di un prodotto già salvato", key="cam_db")
+                
             if foto_db:
                 with st.spinner("Lettura codice in corso..."):
                     try:
@@ -172,7 +175,10 @@ with tab_manuale:
         
         # 📸 Modulo Fotocamera a Scomparsa
         with st.expander("📸 Scansiona Codice a Barre con Fotocamera", expanded=False):
-            foto_web = st.camera_input("Inquadra l'EAN del prodotto", key="cam_web")
+            c_spazio1, c_cam, c_spazio2 = st.columns([1, 2, 1])
+            with c_cam:
+                foto_web = st.camera_input("Inquadra l'EAN del prodotto", key="cam_web")
+                
             if foto_web:
                 with st.spinner("Lettura codice in corso..."):
                     try:
