@@ -1,11 +1,8 @@
 import streamlit as st
-from streamlit_cookies_controller import CookieController
 from components.auth import require_login, get_utente_db
 
 # Configurazione base della pagina (deve essere la prima istruzione)
 st.set_page_config(page_title="NutriLab", page_icon="🧪", layout="wide")
-
-cookie_controller = CookieController()
 
 # =========================================================
 # 📱 STYLING RESPONSIVE (NASCONDI SIDEBAR SU MOBILE)
@@ -71,8 +68,6 @@ if col_logout.button("🚪 Logout", type="secondary", use_container_width=True):
     st.session_state.is_admin = False
     if "user" in st.query_params: 
         del st.query_params["user"]
-    # Rimuove il Cookie al momento del logout
-    cookie_controller.remove('nutrilab_user')
     st.cache_data.clear()
     st.rerun()
 
