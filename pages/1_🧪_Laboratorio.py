@@ -81,7 +81,38 @@ with tab_manuale:
 
     # --- DAL DATABASE LOCALE ---
     if modo_ins == "🗄️ Dal tuo Database":
-        ing_scelto = st.selectbox("Cerca Ingrediente:", sorted(list(MACROS_DB.keys())), index=None, placeholder="Clicca e digita per cercare...", key="lab_db_sel")
+        from services.db import get_ean_mapping
+        ean_map = get_ean_mapping(USER_ID)
+        
+        # 📸 Modulo Fotocamera a Scomparsa per Database Locale
+        with st.expander("📸 Scansiona Codice a Barre", expanded=False):
+            foto_db = st.camera_input("Inquadra l'EAN di un prodotto già salvato", key="cam_db")
+            if foto_db:
+                with st.spinner("Lettura codice in corso..."):
+                    try:
+                        from PIL import Image
+                        from pyzbar.pyzbar import decode
+                        
+                        img_db = Image.open(foto_db)
+                        codici_db = decode(img_db)
+                        
+                        if codici_db:
+                            ean_letto = codici_db[0].data.decode('utf-8')
+                            if ean_letto in ean_map:
+                                nome_trovato = ean_map[ean_letto]
+                                if st.session_state.get("lab_db_sel") != nome_trovato:
+                                    st.session_state.lab_db_sel = nome_trovato
+                                    st.rerun() # Ricarica per forzare la selectbox ad aggiornarsi
+                                else:
+                                    st.success(f"✅ Prodotto riconosciuto: {nome_trovato}")
+                            else:
+                                st.warning(f"⚠️ EAN {ean_letto} non presente nel Database Locale. Clicca su '🌐 Cerca sul Web' per trovarlo online!")
+                        else:
+                            st.error("❌ Nessun codice riconosciuto. Riprova con più luce.")
+                    except Exception as e:
+                        st.error(f"Errore tecnico di lettura: {e}")
+
+        ing_scelto = st.selectbox("Cerca o scansiona ingrediente:", sorted(list(MACROS_DB.keys())), index=None, placeholder="Clicca e digita per cercare...", key="lab_db_sel")
 
         if ing_scelto:
             mac = MACROS_DB[ing_scelto]
@@ -109,7 +140,7 @@ with tab_manuale:
                     st.markdown(f"**Kcal:** {cal_b:.0f} | **C:** {c_b:.1f}g | **P:** {p_b:.1f}g | **G:** {f_b:.1f}g | **Sat:** {sat_b:.1f}g | **Fib:** {fib_b:.1f}g | **Sale:** {sale_b:.2f}g")
                     cal_f, c_f, p_f, f_f, sat_f, fib_f, sale_f = cal_b, c_b, p_b, f_b, sat_b, fib_b, sale_b
 
-            # CALLBACK PER IL SALVATAGGIO: Permette di pulire l'interfaccia in modo sicuro
+            # CALLBACK PER IL SALVATAGGIO
             def on_add_db(ing, q, u, pw_val, r, c_cal, c_p, c_carb, c_f, c_sat, c_fib, c_sal, c_mrc, c_tip):
                 st.session_state.ingredients.append({
                     "id": uuid.uuid4().hex, "nome": ing, "matched_name": ing,
@@ -137,8 +168,30 @@ with tab_manuale:
 
     # --- RICERCA SUL WEB ---
     elif modo_ins == "🌐 Cerca sul Web":
+        query_scansionata = ""
+        
+        # 📸 Modulo Fotocamera a Scomparsa
+        with st.expander("📸 Scansiona Codice a Barre con Fotocamera", expanded=False):
+            foto_web = st.camera_input("Inquadra l'EAN del prodotto", key="cam_web")
+            if foto_web:
+                with st.spinner("Lettura codice in corso..."):
+                    try:
+                        from PIL import Image
+                        from pyzbar.pyzbar import decode
+                        
+                        img = Image.open(foto_web)
+                        codici_rilevati = decode(img)
+                        
+                        if codici_rilevati:
+                            query_scansionata = codici_rilevati[0].data.decode('utf-8')
+                            st.success(f"✅ EAN Rilevato: {query_scansionata}")
+                        else:
+                            st.error("❌ Nessun codice riconosciuto. Riprova avvicinando il prodotto o con più luce.")
+                    except Exception as e:
+                        st.error(f"Errore tecnico di lettura: {e}")
+
         c_web1, c_web2 = st.columns([3, 1])
-        q_web = c_web1.text_input("Codice a barre (EAN) o nome prodotto:", placeholder="Es. 8001234567890 oppure 'Pan Bauletto'", key="q_web_in")
+        q_web = c_web1.text_input("Codice a barre (EAN) o nome prodotto:", value=query_scansionata, placeholder="Es. 8001234567890 oppure 'Pan Bauletto'", key="q_web_in")
         
         if c_web2.button("🔍 Cerca su OpenFoodFacts", use_container_width=True):
             if q_web:
