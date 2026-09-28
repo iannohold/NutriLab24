@@ -10,7 +10,8 @@ from services.db import (
     ADMIN_ID, 
     get_current_macros_db, 
     salva_su_cloud, 
-    get_ricette_utente_e_community
+    get_ricette_utente_e_community,
+    get_ean_mapping
 )
 
 ORARI_FINE_PASTO = {
@@ -76,7 +77,7 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
     if "temp_recipe_diario" not in st.session_state: st.session_state.temp_recipe_diario = []
 
     # =========================================================
-    # LOGICA DI FILTRAGGIO E MAPPING AVANZATO (Marca in Evidenza)
+    # LOGICA DI FILTRAGGIO E MAPPING AVANZATO
     # =========================================================
     raw_tipologie = set([v[11] for v in MACROS_DB.values() if len(v)>11 and v[11]])
     if "Ricetta personale" in raw_tipologie:
@@ -113,6 +114,43 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
         
         opzioni_vassoio, mappa_vassoio = get_opzioni_e_mappa(f_tipo, f_marca)
         
+        # 📸 Fotocamera per ricerca rapida nel Vassoio
+        with st.expander("📸 Scansiona Codice a Barre", expanded=False):
+            c_sp1, c_cm, c_sp2 = st.columns([1, 2, 1])
+            with c_cm:
+                foto_vass = st.camera_input("Inquadra l'EAN del prodotto", key=f"cam_vass_{data_selezionata}")
+            if foto_vass:
+                with st.spinner("Lettura codice in corso..."):
+                    try:
+                        from PIL import Image
+                        from pyzbar.pyzbar import decode
+                        img = Image.open(foto_vass)
+                        codici = decode(img)
+                        if codici:
+                            ean_letto = codici[0].data.decode('utf-8')
+                            ean_map = get_ean_mapping(USER_ID)
+                            if ean_letto in ean_map:
+                                nome_db_trovato = ean_map[ean_letto]
+                                ui_name = None
+                                for k_ui, v_db in mappa_vassoio.items():
+                                    if v_db == nome_db_trovato:
+                                        ui_name = k_ui
+                                        break
+                                if ui_name:
+                                    if st.session_state.get(f"sel_vis_vass_{data_selezionata}") != ui_name:
+                                        st.session_state[f"sel_vis_vass_{data_selezionata}"] = ui_name
+                                        st.rerun()
+                                    else:
+                                        st.success(f"✅ Prodotto riconosciuto: {ui_name}")
+                                else:
+                                    st.warning("⚠️ Prodotto riconosciuto, ma i filtri attuali (Tipologia/Marca) lo stanno nascondendo. Rimuovi i filtri.")
+                            else:
+                                st.warning(f"⚠️ EAN {ean_letto} non presente nel Database Locale. Vai al Laboratorio per aggiungerlo!")
+                        else:
+                            st.error("❌ Nessun codice riconosciuto. Riprova con più luce.")
+                    except Exception as e:
+                        st.error(f"Errore tecnico: {e}")
+
         scelta_visibile = st.selectbox(
             "🔍 Cerca Alimento", 
             opzioni_vassoio, 
@@ -126,19 +164,23 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
             cal_p, p_p, c_p, f_p, fib_p, sat_p, sale_p, var_c, default_pz, unita_def, marca_db, tipo_db = MACROS_DB[ing_scelto]
             
             c_qta, c_unit, c_pz, c_btn = st.columns([1.5, 1.2, 1.2, 1.5])
-            qta_val = c_qta.number_input("Quantità", min_value=0.0, step=1.0 if unita_def=='pz' else 10.0, value=1.0 if unita_def=='pz' else 100.0, key=f"qta_vass_{data_selezionata}")
+            
+            # 🔴 Quantità vuota di default
+            qta_val = c_qta.number_input("Quantità", min_value=0.0, step=1.0 if unita_def=='pz' else 10.0, value=None, placeholder="Es. 100", key=f"qta_vass_{data_selezionata}")
             unit_val = c_unit.selectbox("Unità", ["g", "ml", "pz"], index=["g", "ml", "pz"].index(unita_def) if unita_def in ["g", "ml", "pz"] else 0, key=f"unit_vass_{data_selezionata}")
             
             pz_w = c_pz.number_input("Peso 1pz", min_value=0.0, step=1.0, value=float(default_pz), key=f"pz_w_vass_{data_selezionata}") if unit_val == "pz" else 0.0
             
-            peso_p = qta_val * pz_w if unit_val == "pz" else qta_val
+            safe_qta = qta_val if qta_val is not None else 0.0
+            peso_p = safe_qta * pz_w if unit_val == "pz" else safe_qta
+            
             st.markdown(f"<div style='color:gray; font-size:14px; margin-top:-10px; margin-bottom:10px;'>📊 <b>Valori base ({peso_p:.1f}g):</b> {cal_p*peso_p/100:.0f} kcal | C: {c_p*peso_p/100:.1f}g | P: {p_p*peso_p/100:.1f}g | G: {f_p*peso_p/100:.1f}g | Sale: {sale_p*peso_p/100:.2f}g</div>", unsafe_allow_html=True)
 
             mostra_cottura = st.checkbox("🔥 Applica calo/aumento cottura all'ingrediente", key=f"chk_cotto_{data_selezionata}")
             var_cottura_da_salvare = 0.0
             
             if mostra_cottura:
-                peso_effettivo_crudo = qta_val * pz_w if unit_val == "pz" else qta_val
+                peso_effettivo_crudo = safe_qta * pz_w if unit_val == "pz" else safe_qta
                 tipo_resa_vassoio = st.radio("Resa in cottura:", ["Usa % di stima", "Inserisci peso reale cotto"], horizontal=True, key=f"resa_{data_selezionata}")
                 
                 if tipo_resa_vassoio == "Usa % di stima":
@@ -153,7 +195,7 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
                     c_var2.info(f"⚖️ Variazione calcolata: **{var_cottura_da_salvare:+.1f}%**")
 
             def on_add_multi():
-                if qta_val > 0:
+                if qta_val is not None and qta_val > 0:
                     is_home_made = tipo_db in ["Prodotto Nutrilab", "Ricetta personale", "Prodotto Home Made"]
                     st.session_state.diario_multi_items.append({
                         "id": uuid.uuid4().hex, "nome": ing_scelto, "quantita": float(qta_val), "unita": unit_val,
@@ -169,7 +211,8 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
 
             with c_btn:
                 st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
-                st.button("➕ Aggiungi", use_container_width=True, on_click=on_add_multi, disabled=(not can_add or qta_val <= 0), key=f"btn_add_vass_{data_selezionata}")
+                # 🔴 Il pulsante si abilita SOLO se qta_val ha un numero
+                st.button("➕ Aggiungi", use_container_width=True, on_click=on_add_multi, disabled=(not can_add or qta_val is None or qta_val <= 0), key=f"btn_add_vass_{data_selezionata}")
 
         if st.session_state.diario_multi_items:
             st.markdown("### 🛒 Nel tuo Vassoio:")
@@ -434,6 +477,43 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
         
         opzioni_libera, mappa_libera = get_opzioni_e_mappa(f_tipo_lib, f_marca_lib)
 
+        # 📸 Fotocamera per ricerca rapida nella Ricetta Veloce
+        with st.expander("📸 Scansiona Codice a Barre", expanded=False):
+            c_sp1, c_cm, c_sp2 = st.columns([1, 2, 1])
+            with c_cm:
+                foto_lib = st.camera_input("Inquadra l'EAN del prodotto", key=f"cam_lib_{data_selezionata}")
+            if foto_lib:
+                with st.spinner("Lettura codice in corso..."):
+                    try:
+                        from PIL import Image
+                        from pyzbar.pyzbar import decode
+                        img = Image.open(foto_lib)
+                        codici = decode(img)
+                        if codici:
+                            ean_letto = codici[0].data.decode('utf-8')
+                            ean_map = get_ean_mapping(USER_ID)
+                            if ean_letto in ean_map:
+                                nome_db_trovato = ean_map[ean_letto]
+                                ui_name = None
+                                for k_ui, v_db in mappa_libera.items():
+                                    if v_db == nome_db_trovato:
+                                        ui_name = k_ui
+                                        break
+                                if ui_name:
+                                    if st.session_state.get(f"sel_vis_lib_{data_selezionata}") != ui_name:
+                                        st.session_state[f"sel_vis_lib_{data_selezionata}"] = ui_name
+                                        st.rerun()
+                                    else:
+                                        st.success(f"✅ Prodotto selezionato: {ui_name}")
+                                else:
+                                    st.warning("⚠️ Prodotto riconosciuto, ma i filtri attuali lo stanno nascondendo.")
+                            else:
+                                st.warning(f"⚠️ EAN {ean_letto} non presente nel Database Locale.")
+                        else:
+                            st.error("❌ Nessun codice riconosciuto. Riprova con più luce.")
+                    except Exception as e:
+                        st.error(f"Errore tecnico: {e}")
+
         scelta_visibile_lib = st.selectbox(
             "🔍 Cerca Alimento", 
             opzioni_libera, 
@@ -447,16 +527,20 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
             cal_l, p_l, c_l, f_l, fib_l, sat_l, sale_l, _, default_pz_lib, unita_def, _, _ = MACROS_DB[ing_libero]
             
             c_qta, c_unit, c_pz, c_btn = st.columns([1.5, 1.2, 1.2, 1.5])
-            qta_libera = c_qta.number_input("Quantità", min_value=0.0, step=10.0, key=f"qta_lib_val_{data_selezionata}", value=100.0 if unita_def!='pz' else 1.0)
+            
+            # 🔴 Quantità vuota di default
+            qta_libera = c_qta.number_input("Quantità", min_value=0.0, step=10.0, value=None, placeholder="Es. 100", key=f"qta_lib_val_{data_selezionata}")
             unit_libera = c_unit.selectbox("Unità", options=["g", "ml", "pz"], index=["g", "ml", "pz"].index(unita_def) if unita_def in ["g", "ml", "pz"] else 0, key=f"unit_lib_val_{data_selezionata}_sel")
             
             pz_w_lib = c_pz.number_input("Peso 1pz", min_value=0.0, step=1.0, value=float(default_pz_lib), key=f"lib_pz_w_{data_selezionata}") if unit_libera == "pz" else 0.0
 
-            peso_l = qta_libera * pz_w_lib if unit_libera == "pz" else qta_libera
+            safe_qta_lib = qta_libera if qta_libera is not None else 0.0
+            peso_l = safe_qta_lib * pz_w_lib if unit_libera == "pz" else safe_qta_lib
+            
             st.markdown(f"<div style='color:gray; font-size:14px; margin-top:-10px; margin-bottom:10px;'>📊 <b>Valori ({peso_l:.1f}g):</b> {cal_l*peso_l/100:.0f} kcal | C: {c_l*peso_l/100:.1f}g | P: {p_l*peso_l/100:.1f}g | G: {f_l*peso_l/100:.1f}g | Sale: {sale_l*peso_l/100:.2f}g</div>", unsafe_allow_html=True)
             
             def on_add_libero():
-                if qta_libera > 0:
+                if qta_libera is not None and qta_libera > 0:
                     st.session_state.temp_recipe_diario.append({
                         "id": uuid.uuid4().hex, "nome": ing_libero, "quantita": float(qta_libera), "unita": unit_libera, "peso_pz": float(pz_w_lib)
                     })
@@ -469,7 +553,8 @@ def mostra_interfaccia_inserimento_pasti(data_selezionata, is_planner=False):
 
             with c_btn:
                 st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
-                st.button("➕ Aggiungi", use_container_width=True, on_click=on_add_libero, disabled=(not can_add_lib or qta_libera <= 0), key=f"btn_add_lib_{data_selezionata}")
+                # 🔴 Il pulsante si abilita SOLO se qta_libera ha un numero
+                st.button("➕ Aggiungi", use_container_width=True, on_click=on_add_libero, disabled=(not can_add_lib or qta_libera is None or qta_libera <= 0), key=f"btn_add_lib_{data_selezionata}")
                 
         if st.session_state.temp_recipe_diario:
             st.markdown("---")

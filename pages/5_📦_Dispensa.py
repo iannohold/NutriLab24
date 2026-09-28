@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from services.db import (
     get_conn, get_current_macros_db,
-    get_dispensa_utente, aggiungi_item_dispensa, salva_modifiche_dispensa
+    get_dispensa_utente, aggiungi_item_dispensa, salva_modifiche_dispensa, get_ean_mapping
 )
 from components.nav import render_top_nav
 
@@ -25,9 +25,35 @@ st.write("")
 # Recupero Dispensa tramite SQL
 dispensa_user = get_dispensa_utente(USER_ID)
 
+with st.expander("📸 Scansiona Codice a Barre per aggiungere", expanded=False):
+    c_sp1, c_cm, c_sp2 = st.columns([1, 2, 1])
+    with c_cm:
+        foto_disp = st.camera_input("Inquadra l'EAN del prodotto", key="cam_disp")
+    if foto_disp:
+        with st.spinner("Lettura codice in corso..."):
+            try:
+                from PIL import Image
+                from pyzbar.pyzbar import decode
+                
+                img = Image.open(foto_disp)
+                codici = decode(img)
+                if codici:
+                    ean_letto = codici[0].data.decode('utf-8')
+                    ean_map = get_ean_mapping(USER_ID)
+                    if ean_letto in ean_map:
+                        st.session_state.disp_add_sel = ean_map[ean_letto]
+                        st.success(f"✅ Prodotto riconosciuto: {ean_map[ean_letto]}")
+                        st.rerun()
+                    else:
+                        st.warning(f"⚠️ EAN {ean_letto} non presente nel Database Locale.")
+                else:
+                    st.error("❌ Nessun codice riconosciuto.")
+            except Exception as e:
+                st.error(f"Errore tecnico: {e}")
+
 c_add1, c_add2, c_add3 = st.columns([2, 1, 1])
 with c_add1:
-    nuovo_ing = st.selectbox("Aggiungi prodotto alla dispensa:", ["-- Seleziona --"] + sorted(list(MACROS_DB.keys())))
+    nuovo_ing = st.selectbox("Aggiungi prodotto alla dispensa:", ["-- Seleziona --"] + sorted(list(MACROS_DB.keys())), key="disp_add_sel")
 with c_add2:
     nuova_qta = st.number_input("Quantità iniziale:", min_value=0.0, step=50.0, value=0.0)
 with c_add3:
@@ -40,6 +66,7 @@ with c_add3:
                 success = aggiungi_item_dispensa(USER_ID, nuovo_ing, nuova_qta, unita_def, monitora=True)
                 if success:
                     st.success(f"✅ {nuovo_ing} aggiunto in dispensa!")
+                    st.session_state.disp_add_sel = "-- Seleziona --"
                     st.rerun()
                 else:
                     st.error("Errore durante l'aggiunta in dispensa.")

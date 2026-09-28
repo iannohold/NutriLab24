@@ -217,6 +217,28 @@ with tab_nuovo:
     col_web, col_loc = st.columns(2)
     with col_web:
         st.write("**Cerca nel database mondiale:**")
+        
+        # 📸 Scansiona per il Web
+        with st.expander("📸 Scansiona per Web", expanded=False):
+            c_sp1, c_cm, c_sp2 = st.columns([1, 2, 1])
+            with c_cm:
+                foto_db_web = st.camera_input("Inquadra l'EAN", key="cam_db_web")
+            if foto_db_web:
+                with st.spinner("Lettura codice in corso..."):
+                    try:
+                        from PIL import Image
+                        from pyzbar.pyzbar import decode
+                        img = Image.open(foto_db_web)
+                        codici = decode(img)
+                        if codici:
+                            ean_letto = codici[0].data.decode('utf-8')
+                            st.session_state.input_ricerca_web = ean_letto
+                            cerca_e_compila_off()
+                        else:
+                            st.error("❌ Nessun codice riconosciuto.")
+                    except Exception as e:
+                        st.error(f"Errore tecnico: {e}")
+        
         cw1, cw2 = st.columns([3, 1])
         cw1.text_input("Inserisci EAN o Nome prodotto", key="input_ricerca_web", placeholder="es. 8480000511102")
         cw2.write("")
@@ -225,6 +247,33 @@ with tab_nuovo:
         
     with col_loc:
         st.write("**Modifica un prodotto esistente:**")
+        
+        # 📸 Scansiona per Database Locale
+        with st.expander("📸 Scansiona da Database Locale", expanded=False):
+            c_sp1, c_cm, c_sp2 = st.columns([1, 2, 1])
+            with c_cm:
+                foto_db_loc = st.camera_input("Inquadra l'EAN", key="cam_db_loc")
+            if foto_db_loc:
+                with st.spinner("Lettura codice in corso..."):
+                    try:
+                        from PIL import Image
+                        from pyzbar.pyzbar import decode
+                        img = Image.open(foto_db_loc)
+                        codici = decode(img)
+                        if codici:
+                            ean_letto = codici[0].data.decode('utf-8')
+                            ean_map = get_ean_mapping(st.session_state.get("username", "vins"))
+                            if ean_letto in ean_map:
+                                st.session_state.sel_locale_modifica = ean_map[ean_letto]
+                                carica_prodotto_locale()
+                                st.rerun()
+                            else:
+                                st.warning(f"⚠️ EAN {ean_letto} non presente nel Database Locale.")
+                        else:
+                            st.error("❌ Nessun codice riconosciuto.")
+                    except Exception as e:
+                        st.error(f"Errore tecnico: {e}")
+                        
         cl1, cl2 = st.columns([3, 1])
         cl1.selectbox("Seleziona prodotto locale", ["-- Seleziona --"] + sorted(list(MACROS_DB.keys())), key="sel_locale_modifica", label_visibility="collapsed")
         cl2.button("📥 Carica", on_click=carica_prodotto_locale, use_container_width=True)
